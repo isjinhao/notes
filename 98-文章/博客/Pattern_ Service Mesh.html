@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<!-- saved from url=(0060)https://philcalcado.com/2017/08/03/pattern_service_mesh.html -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta name="viewport" content="width=device-width initial-scale=1">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+    <title>Pattern: Service Mesh</title>
+    <meta name="description" content="">
+
+    <link rel="stylesheet" href="./Pattern_ Service Mesh_files/main.css">
+    <link rel="canonical" href="http://philcalcado.com/2017/08/03/pattern_service_mesh.html">
+</head>
+
+
+  <body>
+      <style>
+       .center-image
+       {
+           margin: 0 auto;
+           display: block;
+       }
+      </style>
+
+    <header class="site-header">
+
+    <div class="wrapper">
+
+        <a class="site-title" href="https://philcalcado.com/">Phil Calçado</a>
+
+        <nav class="site-nav">
+            <a href="https://philcalcado.com/2017/08/03/pattern_service_mesh.html#" class="menu-icon">
+                <svg viewBox="0 0 18 15">
+                    <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"></path>
+                    <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"></path>
+                    <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"></path>
+                </svg>
+            </a>
+
+            <div class="trigger">
+                <a class="page-link" href="https://philcalcado.com/microservices-patterns.html">Microservices Patterns</a>
+                <a class="page-link" href="https://philcalcado.com/about/">About</a>
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">Pattern: Service Mesh</h1>
+    <p class="post-meta">Aug 3, 2017</p>
+    <p class="post-meta">• Microservices •  Distributed Systems •  Service Mesh •  Patterns • </p>
+    
+  </header>
+
+  
+  <article class="post-content">
+    <p>Since their first introduction many decades ago, we learnt that distributed systems enable use cases we couldn’t even think about before them, but they also introduce all sorts of new issues.</p>
+
+<p>When these systems were rare and simple, engineers dealt with the added complexity by minimising the number of remote interactions. The safest way to handle distribution has been to avoid it as much as possible, even if that meant duplicated logic and data across various systems.</p>
+
+<p>But our needs as an industry pushed us even further, from a few larger central computers to hundreds and thousands of small services. In this new world, we’ve had to start taking our head out of the sand and tackling the new challenges and open questions, first with ad-hoc solutions done in a case-by-case manner and subsequently with something more sophisticated. As we find out more about the problem domain and design better solutions, we start crystallising some of the most common needs into patterns, libraries, and eventually platforms.</p>
+
+<h2 id="what-happened-when-we-first-started-networking-computers">What happened when we first started networking computers</h2>
+<p>Since people first thought about getting two or more computers to talk to each other, they envisioned something like this:</p>
+
+<p><img src="./Pattern_ Service Mesh_files/1.png" alt="" class="center-image"></p>
+
+<p>A service talks to another to accomplish some goal for an end-user. This is an obviously oversimplified view, as the many layers that translate between the bytes your code manipulates and the electric signals that are sent and received over a wire are missing. The abstraction is sufficient for our discussion, though. Let’s just add a bit more detail by showing the networking stack as a distinct component:</p>
+
+<p><img src="./Pattern_ Service Mesh_files/2.png" alt="" class="center-image"></p>
+
+<p>Variations of the model above have been in use since the 1950s. In the beginning, computers were rare and expensive, so each link between two nodes was carefully crafted and maintained. As computers became less expensive and more popular, the number of connections and the amount of data going through them increased drastically. With people relying more and more on networked systems, engineers needed to make sure that the software they built was up to the quality of service required by their users.</p>
+
+<p>And there were many questions that needed to be answered to get to the desired quality levels. People needed to find ways for machines to find each other, to handle multiple simultaneous connections over the same wire, to allow for to machines to talk to each other when not connected directly, to route packets across networks, encrypt traffic, etc.</p>
+
+<p>Amongst those, there is something called <em>flow control</em>, which we will use as our example. Flow control is a mechanism that prevents one server from sending more packets than the downstream server can process. It is necessary because in a networked system you have at least two distinct, independent computers that don’t know much about each other. <em>Computer A</em> sends bytes at a given rate to <em>Computer B</em>, but there is no guarantee that <em>B</em> will process the received bytes at a consistent and fast-enough speed. For example, <em>B</em> might be busy running other tasks in parallel, or the packets may arrive out-of-order, and <em>B</em> is blocked waiting for packets that should have arrived first. This means that not only <em>A</em> wouldn’t have the expected performance from <em>B</em>, but it could also be making things worse, as it might overload <em>B</em> that now has to queue up all these incoming packets for processing.</p>
+
+<p>For a while, it was expected that the people building networked services and applications would deal with the challenges presented above in the code they wrote. In our flow control example, it meant that the application itself had to contain logic to make sure we did not overload a service with packets. This networking-heavy logic sat side by side with your business logic. In our abstract diagram, it would be something like this:</p>
+
+<p><img src="./Pattern_ Service Mesh_files/3.png" alt="" class="center-image"></p>
+
+<p>Fortunately, technology quickly evolved and soon enough standards like TCP/IP incorporated solutions to flow control and many other problems into the network stack itself. This means that that piece of code still exists, but it has been extracted from your application to the underlying networking layer provided by your operating system:</p>
+
+<p><img src="./Pattern_ Service Mesh_files/4.png" alt="" class="center-image"></p>
+
+<p>This model has been wildly successful. There are very few organisations that can’t just use the TCP/IP stack that comes with a commodity operating system to drive their business, even when high-performance and reliability are required.</p>
+
+<h2 id="what-happened-when-we-first-started-with-microservices">What happened when we first started with microservices</h2>
+<p>Over the years, computers became even cheaper and more omnipresent, and networking stack described above has proven itself as the de-facto toolset to reliably connect systems. With more nodes and stable connections, the industry has played with various flavours of networked systems, from fine-grained distributed agents and objects to Service-Oriented Architectures composed of larger but still heavily distributed components.</p>
+
+<p>This extreme distribution brought up a lot of interesting higher-level use cases and benefits, but it also surfaced several challenges. Some of these challenges are completely new, but others are just higher-level versions of the ones we discussed when talking about raw networks.</p>
+
+<p>In the 90s, Peter Deutsch and his fellow engineers at Sun Microsystems compiled “<a href="https://en.wikipedia.org/wiki/Fallacies_of_distributed_computing">The 8 Fallacies of Distributed Computing</a>”, in which he lists some assumptions people tend to make when working with distributed systems. Peter’s point is that these, might have been true in more primitive networking architectures or the theoretical models, but they don’t hold true in the modern world:</p>
+
+<ol>
+  <li>The network is reliable</li>
+  <li>Latency is zero</li>
+  <li>Bandwidth is infinite</li>
+  <li>The network is secure</li>
+  <li>Topology doesn’t change</li>
+  <li>There is one administrator</li>
+  <li>Transport cost is zero</li>
+  <li>The network is homogeneous</li>
+</ol>
+
+<p>Denouncing the list above as “fallacies” means that engineers cannot just ignore these issues, they have to explicitly deal with them.</p>
+
+<p>To complicate matters further, moving to even more distributed systems—in what we often call a microservices architecture—has introduced new needs on the operability side. <a href="https://philcalcado.com/2017/06/11/calcados_microservices_prerequisites.html">We discussed some of these in detail before</a>, but here is a quick list of what one has to deal with:</p>
+
+<ol>
+  <li>Rapid provisioning of compute resources</li>
+  <li>Basic monitoring</li>
+  <li>Rapid deployment</li>
+  <li>Easy to provision storage</li>
+  <li>Easy access to the edge</li>
+  <li>Authentication/Authorisation</li>
+  <li>Standardised RPC</li>
+</ol>
+
+<p>So while the TCP/IP stack and general networking model developed many decades ago is still a powerful tool in making computers talk to each other, the more sophisticated architectures introduced another layer of requirements that, once more, have to be fulfilled by engineers working in such architectures.</p>
+
+<p>As an example, consider <em>service discovery</em> and <em>circuit breakers</em>, two techniques used to tackle several of the resiliency and distribution challenges listed above.</p>
+
+<p>As history tends to repeat itself, the first organisations building systems based on microservices followed a strategy very similar to those of the first few generations networked computers. This means that the responsibility of dealing with the requirements listed above was left to the engineer writing the services.</p>
+
+<p><img src="./Pattern_ Service Mesh_files/5.png" alt="" class="center-image"></p>
+
+<p>Service discovery is the process of automatically finding what instances of service fulfil a given query, e.g. a service called <code class="highlighter-rouge">Teams</code> needs to find instances of a service called <code class="highlighter-rouge">Players</code> with the attribute <code class="highlighter-rouge">environment</code> set to <code class="highlighter-rouge">production</code>. You will invoke some service discovery process which will return a list of suitable servers. For more monolithic architectures, this is a simple task usually implemented using DNS, load balancers, and some convention over port numbers (e.g. all services bind their HTTP servers to port 8080). In more distributed environments, the task starts to get more complex, and services that previously could blindly trust on their DNS lookups to find dependencies now have to deal with things like client-side load-balancing, multiple different environments (e.g. staging vs. production), geographically distributed servers, etc. If before all you needed was a single line of code to resolve hostnames, now your services need many lines of boilerplate to deal with various corner cases introduced by higher distribution.</p>
+
+<p>Circuit breakers are a pattern catalogued by Michael Nygard in his book <a href="http://amzn.to/2viDf23">Release It</a>. I like <a href="https://martinfowler.com/bliki/CircuitBreaker.html">Martin Fowler’s summary for the pattern</a>:</p>
+<blockquote>
+  <p>The basic idea behind the circuit breaker is very simple. You wrap a protected function call in a circuit breaker object, which monitors for failures. Once the failures reach a certain threshold, the circuit breaker trips, and all further calls to the circuit breaker return with an error, without the protected call being made at all. Usually you’ll also want some kind of monitor alert if the circuit breaker trips.</p>
+</blockquote>
+
+<p>These are great simple devices to add more reliability to interactions between your services. Nevertheless, just like everything else they tend to get much more complicated as the level of distribution increases. The likelihood of something going wrong in a system raises exponentially with distribution, so even simple things like “some kind of monitor alert if the circuit breaker trips” aren’t necessarily straightforward anymore. One failure in one component can create a cascade of effects across many clients, and clients of clients, triggering thousands of circuits to trip at the same time. Once more what used to be just a few lines of code now requires loads of boilerplate to handle situations that only exist in this new world.</p>
+
+<p>In fact, the two examples listed above can be so hard to implement correctly that large, sophisticated libraries like <a href="https://finagle.github.io/">Twitter’s Finagle</a> and <a href="https://code.facebook.com/posts/1503205539947302">Facebook’s Proxygen</a> became very popular as means to avoid rewriting the same logic in every service.</p>
+
+<p><img src="./Pattern_ Service Mesh_files/5-a.png" alt="" class="center-image"></p>
+
+<p>The model depicted above was followed by the majority of the organisations that pioneered the microservices architecture, like Netflix, Twitter, and SoundCloud. As the number of services in their systems grew, they also stumbled upon various drawbacks of this approach.</p>
+
+<p>Probably the most expensive challenge, even when using a library like Finagle, is that an organisation will still need to invest time from its engineering team in building the glue that links the libraries with the rest of their ecosystem. Based on my experiences at SoundCloud and DigitalOcean I would estimate that following this strategy in a 100-250 engineers organisation, one would need to dedicate 1/10 of the staff to building tooling. Sometimes this cost is explicit as engineers are assigned to teams dedicated to building tooling, but more often the price tag is invisible as it manifests itself as time taken away from working on your products.</p>
+
+<p>A second issue is that the setup above limits the tools, runtimes, and languages you can use for your microservices. Libraries for microservices are often written for a specific platform, be it a programming language or a runtime like the JVM. If an organisation uses platforms other than the one supported by the library, it often needs to port the code to the new platform itself. This steals scarce engineering time. Instead of  working on their core business and products, engineers have to, once again, build tools and infrastructure. That is why some medium-sized organisations like SoundCloud and DigitalOcean decided to support only one platform for their internal services—Scala and Go respectively.</p>
+
+<p>One last problem with this model worth discussing is governance. The library model might abstract the implementation of the features required to tackle the needs of the microservices architecture, but it is still in itself a component that needs to be maintained. Making sure that thousands of instances of services are using the same or at least compatible versions of your library isn’t trivial, and every update means integrating, testing, and re-deploying all services—even if the service itself didn’t suffer any change.</p>
+
+<h2 id="the-next-logical-step">The next logical step</h2>
+<p>Similarly to what we saw in the networking stack, it would be highly desirable to extract the features required by massively distributed services into an underlying <em>platform</em>.</p>
+
+<p>People write very sophisticated applications and services using higher level protocols like HTTP without even thinking about how TCP controls the packets on their network. This situation is what we need for microservices, where engineers working on services can focus on their business logic and avoid wasting time in writing their own services infrastructure code or managing libraries and frameworks across the whole fleet.</p>
+
+<p>Incorporating this idea to our diagram, we could end up with something like the following:</p>
+
+<p><img src="./Pattern_ Service Mesh_files/6.png" alt="" class="center-image"></p>
+
+<p>Unfortunately, changing the networking stack to add this layer isn’t a feasible task. The solution found by many practitioners was to implement it as a set of <em>proxies</em>. The idea here is that a service won’t connect directly to its downstream dependencies, but instead all of the traffic will go through a small piece of software that transparently adds the desired features.</p>
+
+<p>The first documented developments in this space used the concept of <em>sidecars</em>. A sidecar is an auxiliary process that runs aside your application and provides it with extra features. In 2013, <a href="https://medium.com/airbnb-engineering/smartstack-service-discovery-in-the-cloud-4b8a080de619">Airbnb wrote about Synapse and Nerve</a>, their open-source implementation of a sidecar. One year later, <a href="https://medium.com/netflix-techblog/prana-a-sidecar-for-your-netflix-paas-based-applications-and-services-258a5790a015">Netflix introduced Prana</a>, a sidecar dedicated to allowing for non-JVM applications to benefit from their <a href="http://netflix.github.io/">NetflixOSS ecosystem</a>. At SoundCloud, we built sidecars that enabled our Ruby legacy to use <a href="https://www.youtube.com/watch?v=ttmuN8hPQLA">the infrastructure we had built for JVM microservices</a>.</p>
+
+<p><img src="./Pattern_ Service Mesh_files/6-a.png" alt="" class="center-image"></p>
+
+<p>While there are several of these open-source proxy implementations, they tend to be designed to work with specific infrastructure components. As an example, when it comes to service discovery Airbnb’s Nerve &amp; Synapse assume that services are registered in Zookeeper, while for Prana one should use <a href="https://github.com/Netflix/eureka">Netflix’s own Eureka service registry</a> for that.</p>
+
+<p>With the increasing popularity of microservices architecture, we have recently seen a new wave of proxies that are flexible enough to adapt to different infrastructure components and preferences. <a href="https://buoyant.io/2016/02/18/linkerd-twitter-style-operability-for-microservices/">The first widely known system on this space was Linkerd</a>, created by Buoyant based on their engineers’ prior work on Twitter’s microservices platform. Soon enough, <a href="https://eng.lyft.com/announcing-envoy-c-l7-proxy-and-communication-bus-92520b6c8191">the engineering team at Lyft announced Envoy</a> which follows a similar principle.</p>
+
+<h2 id="the-service-mesh">The Service Mesh</h2>
+<p>In such model, each of your services will have a companion proxy sidecar. Given that services communicate with each other only through the sidecar proxy, we end up with a deployment similar to the diagram below:</p>
+
+<p><img src="./Pattern_ Service Mesh_files/mesh1.png" alt="" class="center-image"></p>
+
+<p><a href="https://twitter.com/wm">Buoyant’s CEO William Morgan</a> made the observation that the the interconnection between proxies form a <a href="https://en.wikipedia.org/wiki/Mesh_networking"><em>mesh</em> network</a>. <a href="https://buoyant.io/2017/04/25/whats-a-service-mesh-and-why-do-i-need-one/">In early 2017, William wrote a definition for this platform, and called it a <em>Service Mesh</em></a>:</p>
+
+<blockquote>
+  <p>A service mesh is a dedicated infrastructure layer for handling service-to-service communication. It’s responsible for the reliable delivery of requests through the complex topology of services that comprise a modern, cloud native application. In practice, the service mesh is typically implemented as an array of lightweight network proxies that are deployed alongside application code, without the application needing to be aware.</p>
+</blockquote>
+
+<p>Probably the most powerful aspect of his definition is that it moves away from thinking of proxies as isolated components and acknowledges the network they form as something valuable in itself.</p>
+
+<p><img src="./Pattern_ Service Mesh_files/mesh2.png" alt="" class="center-image"></p>
+
+<p>As organisations move their microservices deployments to more sophisticated runtimes like Kubernetes and Mesos, people and organisations have started using the tools made available by those platforms to implement this idea of a mesh network properly. They are moving away from a set of independent proxies working in isolation to a proper, somewhat centralised, control plane.</p>
+
+<p><img src="./Pattern_ Service Mesh_files/6-b.png" alt="" class="center-image"></p>
+
+<p>Looking at our bird’s eye view diagram, we see that the actual service traffic still flows from proxy to proxy directly, but the control plane knows about each proxy instance. The control plane enables the proxies to  implement things like access control and metrics collection, which requires cooperation:</p>
+
+<p><img src="./Pattern_ Service Mesh_files/mesh3.png" alt="" class="center-image"></p>
+
+<p>The recently announced <a href="https://istio.io/">Istio project</a> is the most prominent example of such system.</p>
+
+<p>It is still too early to fully understand the impacts of a Service Mesh in larger scale systems. Two benefits of this approach are already evident to me. First, not having to write custom software to deal with what are ultimately commodity code for microservices architecture will allow for many smaller organisations to enjoy features previously only available to large enterprises, creating all sorts of interesting use cases. The second one is that this architecture might allow us to finally realise the dream of using the best tool/language for the job without worrying about the availability of libraries and patterns for every single platform.</p>
+
+<h4 id="acknowledgements">Acknowledgements</h4>
+
+<p><a href="https://twitter.com/monica_farrell">Monica Farrell</a>, <a href="https://twitter.com/kumpera">Rodrigo Kumpera</a>, <a href="https://twitter.com/etelsverdlov">Etel Sverdlov</a>, <a href="https://twitter.com/david_e_worth">Dave Worth</a>, <a href="https://twitter.com/mauricio">Mauricio Linhares</a>, <a href="https://twitter.com/danielbryantuk">Daniel Bryant</a>, <a href="https://twitter.com/fabiokung">Fabio Kung</a>, and <a href="https://twitter.com/cv">Carlos Villela</a> gave feedback on drafts of this article.</p>
+
+<h4 id="revision-history">Revision History</h4>
+<ul>
+  <li>03/08/2017 - First published</li>
+  <li>05/08/2017 - Incorporated feedback</li>
+</ul>
+
+  </article>
+
+</div>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Phil Calçado</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col  footer-col-1">
+        <ul class="contact-list">
+          <li>Phil Calçado</li>
+          <li><a href="mailto:"></a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/pcalcado">
+              <span class="icon  icon--github">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"></path>
+                </svg>
+              </span>
+
+              <span class="username">pcalcado</span>
+            </a>
+          </li>
+          
+
+          
+          <li>
+            <a href="https://twitter.com/pcalcado">
+              <span class="icon  icon--twitter">
+                <svg viewBox="0 0 16 16">
+                  <path fill="#828282" d="M15.969,3.058c-0.586,0.26-1.217,0.436-1.878,0.515c0.675-0.405,1.194-1.045,1.438-1.809
+                  c-0.632,0.375-1.332,0.647-2.076,0.793c-0.596-0.636-1.446-1.033-2.387-1.033c-1.806,0-3.27,1.464-3.27,3.27 c0,0.256,0.029,0.506,0.085,0.745C5.163,5.404,2.753,4.102,1.14,2.124C0.859,2.607,0.698,3.168,0.698,3.767 c0,1.134,0.577,2.135,1.455,2.722C1.616,6.472,1.112,6.325,0.671,6.08c0,0.014,0,0.027,0,0.041c0,1.584,1.127,2.906,2.623,3.206 C3.02,9.402,2.731,9.442,2.433,9.442c-0.211,0-0.416-0.021-0.615-0.059c0.416,1.299,1.624,2.245,3.055,2.271 c-1.119,0.877-2.529,1.4-4.061,1.4c-0.264,0-0.524-0.015-0.78-0.046c1.447,0.928,3.166,1.469,5.013,1.469 c6.015,0,9.304-4.983,9.304-9.304c0-0.142-0.003-0.283-0.009-0.423C14.976,4.29,15.531,3.714,15.969,3.058z"></path>
+                </svg>
+              </span>
+
+              <span class="username">pcalcado</span>
+            </a>
+          </li>
+          
+        </ul>
+      </div>
+
+      <div class="footer-col  footer-col-3">
+        <p class="text"></p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+<script async="" src="./Pattern_ Service Mesh_files/analytics.js.下载"></script><script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-134259-3', 'auto');
+  ga('send', 'pageview');
+
+</script>
+
+  
+
+
+</body></html>

@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<!-- saved from url=(0071)https://insights.sei.cmu.edu/sei_blog/2017/08/multicore-processing.html -->
+<html lang="en-us" itemscope="" itemtype="http://schema.org/Blog"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- Data Layer -->
+    <script type="text/javascript" async="" src="./Multicore Processing_files/analytics.js.下载"></script><script async="" src="./Multicore Processing_files/gtm.js.下载"></script><script>
+      var dataLayer = window.dataLayer = window.dataLayer || [];
+      dataLayer.push({
+      'assetTypeName' : 'blog post',
+      'assetType' : 'blog post',
+      'taxonomy' : '
+        Multicore Processing and Virtualization
+      ',
+      'publishDate' : '2017-08-21 10:00:00',
+        'authors' : 'Donald Firesmith'
+          });
+    </script>
+    <!-- End Data Layer -->
+
+    <!-- Google Tag Manager -->
+    <script type="text/javascript" src="./Multicore Processing_files/js"></script>
+    <script type="text/javascript" src="./Multicore Processing_files/googleTags.js.下载"></script>
+    <!-- End Google Tag Manager -->
+
+    <!-- Swiftype -->
+    <meta class="swiftype" name="sei_site_priority" data-type="integer" content="2">
+    <meta class="swiftype" name="siteDomain" data-type="string" content="insights.sei.cmu.edu">
+    <meta name="type" content="blog" class="swiftype" data-type="enum">
+    <meta name="AssetType" id="AssetType" content="Blog Post">
+    <meta name="AssetTypeName" id="AssetTypeName" content="Blog Post" class="swiftype" data-type="string">
+    <meta property="st:type" content="post">
+    <meta class="swiftype" name="sei_title" data-type="string" content="Multicore Processing">
+    <meta class="swiftype" name="sei_topic" data-type="string" content="Multicore Processing and Virtualization">
+    <meta class="swiftype" name="sei_author" data-type="string" content="Donald Firesmith">
+    <meta class="swiftype" name="sei_date_published" data-type="date" content="2017-08-21">
+    <meta class="swiftype" name="sei_year_published" data-type="integer" content="2017">
+    <meta class="swiftype" data-type="string" name="Description" id="Description" content="The first blog entry in this series introduced the basic concepts of multicore processing and virtualization, highlighted their benefits, and outlined the challenges these technologies present. This second post will concentrate on multicore processing, where I will define its various...">
+    <!-- END Swiftype -->
+
+    
+    <link rel="start" href="https://insights.sei.cmu.edu/sei_blog/">
+    <link rel="alternate" type="application/atom+xml" title="Recent Entries" href="https://insights.sei.cmu.edu/sei_blog/atom.xml">
+
+    <!-- CSS -->
+    <link rel="stylesheet" type="text/css" href="./Multicore Processing_files/bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="./Multicore Processing_files/SEIBootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="./Multicore Processing_files/google-fonts.min.css">
+    <link href="./Multicore Processing_files/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
+    <!-- END CSS -->
+
+    <!-- JS -->
+    <script type="text/javascript" src="./Multicore Processing_files/bootstrap.min.js.下载"></script>
+    <script src="./Multicore Processing_files/jquery-2.1.4.min.js.下载"></script>
+  <!-- END JS -->
+
+ 
+    <!-- Moveabletype -->
+      
+      <!-- title -->
+      <title>
+        Multicore Processing
+      </title>
+      <meta name="Description" content="The first blog entry in this series introduced the basic concepts of multicore processing and virtualization, highlighted their benefits, and outlined the challenges these technologies present. This second post will concentrate on multicore processing, where I will define its various...">
+      
+        <meta name="GSATaxonomyOutput" content="Mission Assurance">
+      
+        <meta name="GSATaxonomyOutput" content="Multicore Processing and Virtualization">
+      
+      <meta name="ASSETPUBLISHDATE" id="ASSETPUBLISHDATE" content=" 2017-08-21 10:00:00">
+    <!-- END Moveabletype -->
+
+    <style>
+       #comments-open-captcha img {
+        margin-bottom: 1.5rem;
+      }
+      #captcha_code {
+        display: block;
+        height: calc(2.25rem + 5px);
+        padding: .375rem .75rem;
+        margin-bottom: 1.5rem;
+        font-size: 1rem;
+        line-height: 1.5;
+        color: #495057;
+        background-color: #fff;
+        background-clip: padding-box;
+        border: 1px solid #ced4da;
+        border-radius: .25rem;
+        transition: border-color .15s ease-in-out,box-shadow .15s ease-in-out;
+      }
+    </style>
+  </head>
+
+<body>
+
+  <!-- Google Tag Manager (noscript) -->
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-M62LG9" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+  <!-- End Google Tag Manager (noscript) -->
+
+
+    
+  <!--<div class="container"></div>-->
+
+  <svg style="position: absolute; width: 0; height: 0; overflow: hidden;" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <defs>
+    <symbol id="icon-search" viewBox="0 0 32 32">
+      <title>search</title>
+      <path d="M31.008 27.231l-7.58-6.447c-0.784-0.705-1.622-1.029-2.299-0.998 1.789-2.096 2.87-4.815 2.87-7.787 0-6.627-5.373-12-12-12s-12 5.373-12 12 5.373 12 12 12c2.972 0 5.691-1.081 7.787-2.87-0.031 0.677 0.293 1.515 0.998 2.299l6.447 7.58c1.104 1.226 2.907 1.33 4.007 0.23s0.997-2.903-0.23-4.007zM12 20c-4.418 0-8-3.582-8-8s3.582-8 8-8 8 3.582 8 8-3.582 8-8 8z"></path>
+    </symbol>
+    <symbol id="icon-menu" viewBox="0 0 24 17">
+      <title>menu</title>
+      <rect width="24" height="3"></rect>
+      <rect y="7" width="24" height="3"></rect>
+      <rect y="14" width="24" height="3"></rect>
+    </symbol>
+    <symbol id="icon-carat-right" viewBox="0 0 8 12">
+      <title>icon-carat-right</title>
+      <polygon points="2 0 0 2 4 6 0 10 2 12 8 6 2 0"></polygon>
+    </symbol>
+    <symbol id="cmu-wordmark" viewBox="0 0 728.14 64.49">
+      <title>cmu-wordmark</title>
+      <polygon class="cls-1" points="213.53 18.71 213.53 45.54 218 45.54 218 47.31 200.12 47.31 200.12 45.54 204.59 45.54 204.59 20.6 201.12 20.6 201.12 18.71 213.53 18.71"></polygon>
+      <path class="cls-1" d="M36.93,1.38H35.31c-.07,1.38-.79,2-2.17,2C30.38,3.35,26.35,0,21.62,0,8.15,0,0,13.27,0,25S7.75,48.37,20.76,48.37c7.88,0,10.84-3.75,12.94-3.75,1.38,0,1.63,1.22,1.63,2.69h1.78V31.21H35.34l-.39,2.23C34,38.77,29.9,46.63,21.42,46.63,13.93,46.63,11,40.15,11,24.18,11,7.43,15,1.79,21.62,1.79c7.49,0,12.64,8.4,13.69,15.1h1.62Z"></path>
+      <path class="cls-1" d="M60,39.6c-.13,3.44-2.07,6.25-5.12,6.25-4.41,0-4.6-3.72-4.6-6.56,0-3.44.39-5.7,4.6-6.16L60,32.61ZM71.8,41.74c0,1.68-1.11,3.63-1.84,3.63-1.17,0-1.43-1.23-1.43-3.24V27.22c0-7.39-6.94-9.2-13.61-9.2-6.48,0-11.21,3.17-11.21,6.8A3.91,3.91,0,0,0,47.92,29a3.69,3.69,0,0,0,4-3.89c0-3.3-3.42-3.34-3.42-3.42,0-1.47,3.81-1.94,6-1.94,4.86,0,5.51,1.79,5.51,5.68v5.44l-6.35.52c-5.9.45-12.32,2-12.32,8.75,0,5.64,5.06,7.91,10,7.91,2.53,0,7-1,8.69-4.08a6.65,6.65,0,0,0,6.48,4.08c4.21,0,6.93-2.53,6.93-6.35Z"></path>
+      <polygon class="cls-1" points="674.53 18.61 674.53 45.45 679 45.45 679 47.22 661.11 47.22 661.11 45.45 665.58 45.45 665.58 20.5 661.11 20.5 661.11 18.61 674.53 18.61"></polygon>
+      <path class="cls-1" d="M286,32.45,296.7,1.73h14.81l0,1.83h-4.24v42h4.24v1.79H293.68V45.53H298V4h-.13l-15.1,43.29H281L265.53,3.25h-.13V40c0,5.25,1.36,5.53,4.86,5.53h.2v1.79H259.25V45.53h0c3.7,0,4.39-2.16,4.39-4.95v-37h-4.39V1.69h16.26Z"></path>
+      <path class="cls-1" d="M321.83,29.87V25.52c0-4.34,1.88-5.7,4.08-5.7,3.11,0,4.08,2.14,4.08,5.7v4.36Zm0,1.76h17.89c-.07-7-6.55-13.74-13.35-13.61-7.65,0-14.26,6.61-14.26,15.36,0,8.43,6.16,14.71,14.45,14.71,8,0,11.93-4.93,13.35-11.34h-1.77c-1.42,6-4.59,9.45-9.64,9.45-6,0-6.68-4.72-6.68-9.13Z"></path>
+      <path class="cls-1" d="M591.08,29.77V25.41c0-4.34,1.88-5.7,4.08-5.7,3.11,0,4.08,2.14,4.08,5.7v4.36Zm0,1.76H609c-.07-7-6.55-13.74-13.35-13.61-7.65,0-14.26,6.61-14.26,15.36,0,8.43,6.16,14.71,14.45,14.71,8,0,11.93-4.93,13.35-11.34H607.4c-1.42,6-4.59,9.45-9.64,9.45-6,0-6.68-4.72-6.68-9.13Z"></path>
+      <polygon class="cls-1" points="339.83 1.79 339.83 3.44 344.31 3.44 344.31 45.48 339.83 45.48 339.83 47.32 357.72 47.32 357.72 45.48 353.25 45.48 353.25 1.79 339.83 1.79"></polygon>
+      <polygon class="cls-1" points="358.97 1.79 358.97 3.44 363.44 3.44 363.44 45.48 358.97 45.48 358.97 47.32 376.86 47.32 376.86 45.48 372.39 45.48 372.39 1.79 358.97 1.79"></polygon>
+      <path class="cls-1" d="M397.43,39.47c0,4.86-2,6.87-5.31,6.87s-5.31-2-5.31-6.87V26.71c0-4.86,2-6.87,5.31-6.87s5.31,2,5.31,6.87Zm10.11-6.41c0-8.88-6.87-15-15.42-15s-15.42,6.16-15.42,15,6.87,15,15.42,15,15.42-6.16,15.42-15"></path>
+      <path class="cls-1" d="M454.05,3.28h4.53V32.07c0,10,6.93,16.14,17.5,16.14,11.93,0,17.11-6.29,17.11-15.81V7.78c0-3.76,1-4.5,3.37-4.5h1.31V1.54h-11.4V3.28h.82c3.3,0,3.76,1,3.76,4.76V33c0,8.82-5.47,12.83-11,12.83-9.46,0-11.34-6.35-11.9-14.65V3.28h4.25V1.54H454.05Z"></path>
+      <path class="cls-1" d="M566.34,47.95h1.75l9.59-22.68c1.94-4.24,3-4.77,4.47-4.84h.58V18.65H572.62v1.79h1.23c1.88,0,2.74-.12,2.74,1.56a10.5,10.5,0,0,1-1.1,3.94l-4.4,10.37L564,20.45h3.6V18.65H551.37v1.79h3Z"></path>
+      <path class="cls-1" d="M638.55,47.95h1.54a2.07,2.07,0,0,1,2.29-1.55c1.69,0,3.7,1.55,7.32,1.55a10.57,10.57,0,0,0,10.37-10.63c0-7.91-5.44-8.49-12.38-9.46-3.63-.52-5.68-1-5.68-3.89,0-3,2.66-4.32,6.16-4.32,4.86,0,6.75,3.22,8.36,7.44h1.53v-9.2h-1.47c0,.78-.67,1.43-1.9,1.43-2.08,0-3.76-1.43-6.74-1.43a9.63,9.63,0,0,0-9.66,9.66c0,8.36,6.35,9.08,11.28,9.66,4.67.58,6.35.88,6.35,3.86,0,3.43-2.85,5-6.35,5-4.92,0-8.31-4.26-9.48-9h-1.54Z"></path>
+      <polygon class="cls-1" points="549 18.61 549 45.45 553.47 45.45 553.47 47.22 535.58 47.22 535.58 45.45 540.05 45.45 540.05 20.5 535.58 20.5 535.58 18.61 549 18.61"></polygon>
+      <path class="cls-1" d="M540.06,9.67a4.46,4.46,0,1,0,4.46-4.47,4.45,4.45,0,0,0-4.46,4.47"></path>
+      <path class="cls-1" d="M665.57,9.67A4.46,4.46,0,1,0,670,5.2a4.45,4.45,0,0,0-4.46,4.47"></path>
+      <path class="cls-1" d="M149.79,29.86V25.51c0-4.34,1.88-5.7,4.08-5.7,3.11,0,4.08,2.14,4.08,5.7v4.35Zm0,1.76h17.89c-.07-7-6.55-13.74-13.35-13.61-7.65,0-14.26,6.61-14.26,15.36,0,8.43,6.16,14.71,14.45,14.71,8,0,11.93-4.93,13.35-11.34H166.1c-1.42,6-4.59,9.45-9.64,9.45-6,0-6.68-4.72-6.68-9.13Z"></path>
+      <path class="cls-1" d="M228,29.86V25.51c0-4.34,1.88-5.7,4.08-5.7s4.08,1.34,4.08,5.7v4.35Zm0,1.76h17.89c-.07-7-6.55-13.74-13.35-13.61-7.65,0-14.26,6.61-14.26,15.36,0,8.43,6.16,14.71,14.45,14.71,8,0,11.93-4.93,13.35-11.34h-1.77c-1.42,6-4.59,9.45-9.64,9.45-6,0-6.68-4.72-6.68-9.13Z"></path>
+      <path class="cls-1" d="M529.84,45.46V28c0-7-3-10.27-9.14-10.27-4.35,0-8.75,2.49-10.5,6.25h0V18.7H496.79v1.75h4.47v25h-4.47v1.75H514V45.46H510.2V28.36c.56-2.41,3.61-8,7.15-8,2.35,0,3.55.81,3.55,5.16v19.9h-3.7v1.75h17.11V45.46Z"></path>
+      <path class="cls-1" d="M420.93,18.8v5.25h0c1.75-3.76,6.15-6.25,10.5-6.25,6.16,0,9.14,3.27,9.14,10.27v17.5H445v1.75H427.93V45.57h3.7V25.67c0-4.35-1.19-5.16-3.55-5.16-3.54,0-6.59,5.55-7.15,8v17.1h3.83v1.75H407.52V45.57H412v-25h-4.47V18.8Z"></path>
+      <path class="cls-1" d="M135.52,45.56V28.06c0-7-3-10.27-9.14-10.27-4.35,0-8.75,2.49-10.5,6.25h0V18.79H102.47v1.75h4.47v25h-4.47v1.75h17.24V45.56h-3.83V28.46c.56-2.41,3.61-8,7.15-8,2.35,0,3.55.81,3.55,5.16v19.9h-3.7v1.75H140V45.56Z"></path>
+      <path class="cls-1" d="M204.62,9.84a4.46,4.46,0,1,0,4.46-4.47,4.45,4.45,0,0,0-4.46,4.47"></path>
+      <path class="cls-1" d="M718,18.62V20.5c2.76,0,4,.25,4,1.5a10.5,10.5,0,0,1-1.1,3.94l-4.4,10.37-7-15.81h3.68V18.62H690.81V4.72h-1.17c0,6.87-4.67,13.93-11.21,13.93v1.85h3.44V40.56A7.1,7.1,0,0,0,689,47.95a9.22,9.22,0,0,0,8.62-5l-1.39-.76c-.78,1.17-1.81,2.72-3.43,2.72-1.3,0-2-.92-2-3.06V20.51h9l11.84,27.31-4.1,9.65v0h0a.55.55,0,0,1-.49.32.54.54,0,0,1-.51-.37v0a4.46,4.46,0,1,0-6.3,5.18h0l.14.06.26.12a4.51,4.51,0,0,0,1.63.34c3.76.32,5.69-2.46,7-5.29.3-.64.57-1.29.83-1.9.57-1.37,1.56-3.73,2.73-6.48h0L714,46.82h0l9.12-21.55c1.94-4.24,2.69-4.78,5-4.78h0V18.62Z"></path>
+      <path class="cls-1" d="M95.94,17.71a9.29,9.29,0,0,0-8.56,6.09h-.13V18.87H74v1.81h4.47V45.62H74V47.4H93.34V45.62h-6v-14c0-4.17,1.09-8.44,3.83-10.79a.53.53,0,0,1,.85.5h0a6.22,6.22,0,0,0-.35,1.85,4.19,4.19,0,0,0,4.41,4.21,4.68,4.68,0,0,0,4.93-4.73C101.06,19.59,99,17.71,95.94,17.71Z"></path>
+      <path class="cls-1" d="M193.49,19.82c.13,0,.29-.11.39,0a.27.27,0,0,1,0,.35h0a2.78,2.78,0,0,0-.24,2.38,2.74,2.74,0,0,0,2,1.77,2.79,2.79,0,0,0,3.47-2.72,3,3,0,0,0-1.53-2.53,5.29,5.29,0,0,0-2.85-.75,7.68,7.68,0,0,0-4.76,2h0q-.44-.32-.92-.6A14,14,0,0,0,181.83,18c-5.44,0-11.28,3.56-11.28,9.46a8.42,8.42,0,0,0,5.38,7.91v.13A7.08,7.08,0,0,0,169.45,43c0,3.24,1.49,5.7,4.22,6.48v.13c-2.59.71-5.58,3.31-5.58,6.42,0,4.8,5.64,8.49,12.83,8.49,9,0,14.91-6.09,14.91-14,0-6.29-3.11-9.14-9.46-9H175.61c-1.62,0-2.7-.07-2.7-1.82s2.49-3.37,4.95-3.37a4.87,4.87,0,0,1,1.32.39,8.35,8.35,0,0,0,2.66.39c5.57,0,11.54-3.18,11.54-9.33A9.62,9.62,0,0,0,191,21.61a.22.22,0,0,1,0-.33,13.23,13.23,0,0,1,1.69-1.1,3.64,3.64,0,0,1,.76-.35Zm-8.61,29.82c6.48,0,8.2.27,8.2,4.23,0,4.73-5.8,9.07-12.34,9.07-5.83,0-8.63-3.58-8.76-6.69,0-2.85,1.42-4.73,3.17-6.61ZM186,27.51c0,7.53-1.75,7.78-4.08,7.78-2.59,0-4-.5-4-8,0-5.25.58-7.48,4-7.48,3,0,4,.2,4.08,7.66Z"></path>
+      <path class="cls-1" d="M631.67,17.45a9.29,9.29,0,0,0-8.56,6.09H623V18.61H609.7v1.81h4.47V45.36H609.7v1.77h19.38V45.36h-6v-14c0-4.17,1.09-8.43,3.82-10.78a.53.53,0,0,1,.85.5v0a6.23,6.23,0,0,0-.34,1.83,4.19,4.19,0,0,0,4.41,4.21,4.68,4.68,0,0,0,4.93-4.73C636.79,19.33,634.72,17.45,631.67,17.45Z"></path>
+    </symbol>
+  </defs>
+</svg>
+
+<!---Responsive Nav --->
+<nav class="d-md-none sidebar-menu collapse">
+  <ul>
+    <li class="menu-close"><a href="https://insights.sei.cmu.edu/sei_blog/2017/08/multicore-processing.html#" data-toggle="collapse" data-target=".sidebar-menu">✕</a></li>
+    <li><a href="https://insights.sei.cmu.edu/" data-toggle="collapse" data-target=".sidebar-menu">All</a></li>
+    <li><a href="https://insights.sei.cmu.edu/sei_blog/" target="_self" aria-haspopup="true" aria-expanded="false">SEI Blog</a></li>
+    <li><a href="https://insights.sei.cmu.edu/cert/" target="_self" aria-haspopup="true" aria-expanded="false">CERT/CC Blog</a></li>
+    <li><a href="https://insights.sei.cmu.edu/devops/" target="_self" aria-haspopup="true" aria-expanded="false">DevOps Blog</a></li>
+    <li><a href="https://insights.sei.cmu.edu/insider-threat/" target="_self" aria-haspopup="true" aria-expanded="false">Insider Threat Blog</a></li>
+  </ul>
+</nav>
+<!---END Responsive Nav --->
+
+<div class="page-content-wrapper">
+  <header class="roof">
+    <div class="container d-flex flex-wrap justify-content-between  d-print-none">
+      <div class="col-12 col-md-6 d-flex justify-content-between">
+        <a class="wordmark" href="https://www.cmu.edu/"><span class="sr-only">Carnegie Mellon University</span> <svg class="cmu-wordmark">
+            <use xlink:href="#cmu-wordmark"></use>
+          </svg>
+        </a>
+        <button class="d-md-none d-sm-inline menu-icon" data-toggle="collapse" data-target=".sidebar-menu">
+          <svg class="icon icon-menu d-flex">
+            <use xlink:href="#icon-menu"></use>
+          </svg>
+        </button>
+      </div>
+      <!--col-6-->
+      <div class="col-12 col-md-5">
+        <!--roof-search-->
+        <form name="swiftForm" id="swiftForm" class="mb-0">
+          <div class="roof-search input-group input-group">
+            <input name="stp" value="1" type="hidden">
+            <input id="stq" name="stq" title="stq" type="text" alt="Search blog posts..." class="form-control form-control--blog mb-0" placeholder="Search blog posts" aria-label="Search blog posts...">
+            <span class="input-group-btn">
+              <button class="btn btn-secondary" type="submit">
+                <svg class="icon icon-search">
+                  <use xlink:href="#icon-search"></use>
+                </svg>
+              </button>
+            </span>
+          </div>
+          <!--END roof-search-->
+        </form>
+      
+      <script>
+        function getSearchStr(){
+            var searchStr = encodeURIComponent($('#stq').val());
+            
+            window.location.assign('/searchresults.html#stq=' + searchStr + '&stp=1');
+          
+        }
+
+        document.getElementById("swiftForm").addEventListener("submit", function(event){
+            event.preventDefault();
+            getSearchStr();
+        })
+    </script>
+    
+      </div>
+      <!--col-6-->
+    </div>
+  </header>
+  <div class="main-header container">
+    <div class="institute">
+      <h1><a href="https://www.sei.cmu.edu/">Software Engineering Institute</a></h1>
+          <!-- <h1>9</h1> -->
+      <h4><a href="https://insights.sei.cmu.edu/" target="_self">Blogs</a></h4>
+    </div>
+    <nav class="d-md-block d-none  d-print-none">
+      <ul class="nav nav-fill">
+        <li class="nav-menu-item nav-menu-item__blog-no-dropnav"><a href="https://insights.sei.cmu.edu/" class="nav-link" target="_self" aria-haspopup="true" aria-expanded="false">All</a></li>
+        <li class="nav-menu-item nav-menu-item__blog-no-dropnav"><a href="https://insights.sei.cmu.edu/sei_blog/" class="nav-link" target="_self" aria-haspopup="true" aria-expanded="false">SEI Blog</a></li>
+        <li class="nav-menu-item nav-menu-item__blog-no-dropnav"><a href="https://insights.sei.cmu.edu/cert/" class="nav-link" target="_self" aria-haspopup="true" aria-expanded="false">CERT/CC Blog</a></li>
+        <li class="nav-menu-item nav-menu-item__blog-no-dropnav"><a href="https://insights.sei.cmu.edu/devops/" class="nav-link" target="_self" aria-haspopup="true" aria-expanded="false">DevOps Blog</a></li>
+        <li class="nav-menu-item nav-menu-item__blog-no-dropnav"><a href="https://insights.sei.cmu.edu/insider-threat/" class="nav-link" target="_self" aria-haspopup="true" aria-expanded="false">Insider
+            Threat Blog</a></li>
+      </ul>
+    </nav>
+  </div>
+
+      
+    <section class="d-print-none">
+      <div class="container">
+        <!-- Breadcrumb container -->
+        <div class="row">
+          <div class="col-sm-12 col-md-12 col-lg-12 col-12">
+            <nav id="breadcrumbs">
+              <ol class="breadcrumb">
+                <li class="breadcrumb-item ">
+                  <a href="https://www.sei.cmu.edu/">SEI</a>
+                </li>
+                <li class="breadcrumb-item ">
+                  <a href="https://www.sei.cmu.edu/publications/">Publications</a>
+                </li>
+                <li class="breadcrumb-item ">
+                  <a href="https://insights.sei.cmu.edu/">Blogs</a>
+                </li>
+                <li class="breadcrumb-item ">
+                  <a href="https://insights.sei.cmu.edu/sei_blog/">SEI Blog</a>
+                </li>
+                <li class="breadcrumb-item active">
+                  Multicore Processing
+                </li>
+              </ol>
+            </nav>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="introduction blog--entry">
+      <div class="container">
+        <!-- Post container -->
+        <div class="row row justify-content-between">
+          <div class="col-sm-12 col-md-8 col-lg-8 col-12">
+            <!-- Post container LEFT column -->
+            <article class="article_blog">
+              <h2 itemprop="name" class="asset-name entry-title mt-0 mb-4">
+                Multicore Processing
+              </h2>
+              <!-- Author image, byline, date, blog and category -->
+              <div class="m-media-object__listing">
+                <div class="media">
+                  <img class="d-flex mr-3 img-fluid img--small" img="" id="auth" src="./Multicore Processing_files/userpic-34-180x180.png" align="left" alt="Donald Firesmith">
+                  <div class="media-body">
+                    <h6 class="mt-0" id="alert">
+                      <time datetime="August 21, 2017 10:00 AM" itemprop="datePublished">August 21, 2017</time> • SEI Blog
+                    </h6>
+                    <h5 class="m-media-object__listing__author m-media-object__listing__author--blog">
+                      <a href="https://insights.sei.cmu.edu/author/donald-firesmith">Donald Firesmith</a>
+                    </h5>
+                    
+                      
+                        
+                          <span class="badge badge--blog badge--blog-inline"><a itemprop="articleSection" rel="tag" href="https://insights.sei.cmu.edu/sei_blog/multicore-processing-and-virtualization/">
+                              Multicore Processing and Virtualization
+                            </a></span>
+
+                        
+                        
+                            
+
+                            
+                              <span class="badge badge--blog badge--blog-inline"><a itemprop="articleSection" rel="tag" href="https://insights.sei.cmu.edu/sei_blog/mission-assurance/">
+                                Mission Assurance
+                              </a></span>
+                            
+                        
+                            
+
+                            
+                        
+                      
+                    
+                  </div>
+                </div>
+              </div>
+              <!-- Post body -->
+              <div class="blog-post-body">
+                <p>The first blog entry in this series introduced the basic concepts of multicore processing and virtualization, highlighted their benefits, and outlined the challenges these technologies present. This second post will concentrate on multicore processing, where I will define its various types, list its current trends, examine its pros and cons, and briefly address its safety and security ramifications.</p>
+              </div>
+              <!-- Post More -->
+              <div class="blog-post-body">
+                <p><b>Definitions</b></p>
+<p>A <b><a href="https://en.wikipedia.org/wiki/Multi-core_processor">multicore processor</a> </b>is a single integrated circuit (a.k.a., chip multiprocessor or CMP) that contains multiple core processing units, more commonly known as <i>cores</i>. There are many different multicore processor architectures, which vary in terms of</p>
+<ul>
+<li><b>Number of cores</b>. Different multicore processors often have different numbers of cores. For example, a quad-core processor has four cores. The number of cores is usually a power of two.</li>
+<li><b>Number of core types</b>.
+<ul>
+<li><b><a href="https://en.wikipedia.org/wiki/Multi-core_processor#Architecture">Homogeneous (symmetric) cores.</a></b> All of the cores in a homogeneous multicore processor are of the same type; typically the core processing units are general-purpose <a href="https://en.wikipedia.org/wiki/Central_processing_unit">central processing units</a> that run a single multicore operating system.</li>
+<li><b><a href="https://en.wikipedia.org/wiki/Multi-core_processor#Architecture">Heterogeneous (asymmetric) cores</a></b>. Heterogeneous multicore processors have a mix of core types that often run different operating systems and include <a href="https://en.wikipedia.org/wiki/Graphics_processing_unit">graphics processing units</a>.</li>
+</ul>
+</li>
+<li><b>Number and level of caches</b>.<b> </b>Multicore processors vary in terms of their <a href="https://en.wikipedia.org/wiki/CPU_cache">instruction and data caches</a>, which are relatively small and fast pools of local memory.</li>
+<li><b>How cores are interconnected. </b>Multicore processors also vary in terms of their <a href="https://en.wikipedia.org/wiki/Bus_(computing)">bus</a> architectures.</li>
+<li><b>Isolation</b>. The amount, typically minimal, of in-chip support for the spatial and temporal isolation of cores:
+<ul>
+<li><b>Physical isolation</b> ensures that different cores cannot access the same physical hardware (e.g., memory locations such as caches and RAM).</li>
+<li><b>Temporal isolation </b>ensures that the execution of software on one <i>core</i> does not impact the temporal behavior of software running on another <i>core.</i></li>
+</ul>
+</li>
+</ul>
+<p><b>Homogeneous Multicore Processor</b></p>
+<p>The following figure notionally shows the architecture of a system in which 14 software applications are allocated by a single host operating system to the cores in a homogeneous quad-core processor. In this architecture, there are three levels of cache, which are progressively larger but slower: L1 (consisting of an instruction cache and a data cache), L2, and L3. Note that the L1 and L2 caches are local to a single core, whereas L3 is shared among all four cores.</p>
+<p><img width="975" height="574" class="mt-image-none" alt="firesmith_secondmulticore_figure1.png" src="./Multicore Processing_files/firesmith_secondmulticore_figure1.png"></p>
+<p><b>Heterogeneous Multicore Processor</b></p>
+<p>The following figure notionally shows how these 14 applications could be allocated to four different operating systems, which in turn are allocated to four different cores, in a heterogeneous, quad-core processor. From left to right, the cores include a general-purpose central processing unit core running Windows; a <a href="https://en.wikipedia.org/wiki/Graphics_processing_unit">graphical processing unit (GPU)</a> core running graphics-intensive applications on Linux; a <a href="https://en.wikipedia.org/wiki/Digital_signal_processing">digital signal processing (DSP)</a> core running a <a href="https://en.wikipedia.org/wiki/Real-time_operating_system">real-time operating system (RTOS)</a>; and a high-performance core also running an RTOS.</p>
+<p><img width="975" height="569" class="mt-image-none" alt="firesmith_secondmulticore_figure2.png" src="./Multicore Processing_files/firesmith_secondmulticore_figure2.png"></p>
+<p><b>Current Trends in Multicore Processing</b></p>
+<p>Multicore processors are replacing traditional, single-core processors so that fewer single-core processors are being produced and supported. Consequently, single-core processors are becoming technologically obsolete. <a href="http://www.gotw.ca/publications/concurrency-ddj.htm">Heterogeneous multicore processors</a>, such as computer-on-a-chip processors, are becoming more common.</p>
+<p>Although multicore processors have largely saturated some application domains (e.g., cloud computing, data warehousing, and on-line shopping), they are just starting to be used in real-time, safety- and security-critical, cyber-physical systems. One area in which multicore processing is becoming popular is in environments constrained by size, weight, and power, and cooling (<a href="http://mil-embedded.com/topics/swap-c/">SWAP-C</a>), in which significantly increased performance is required.</p>
+<p><b>Pros of Multicore Processing</b></p>
+<p>Multicore processing is typically commonplace because it offers advantages in the following seven areas:</p>
+<ol>
+<li><b>Energy Efficiency</b>. By using multicore processors, architects can decrease the number of embedded computers. They overcome increased heat generation due to <a href="https://en.wikipedia.org/wiki/Moore%27s_law">Moore's Law</a> (i.e., smaller circuits increase electrical resistance, which creates more heat), which in turn decreases the need for cooling. The use of multicore processing reduces power consumption (less energy wasted as heat), which increases battery life.</li>
+<li><b>True Concurrency</b>. By allocating applications to different cores, multicore processing increases the intrinsic support for actual (as opposed to virtual) parallel processing within individual software applications across multiple applications.</li>
+<li><b>Performance</b>. Multicore processing can increase performance by running multiple applications concurrently. The decreased distance between cores on an integrated chip enables shorter resource access latency and higher cache speeds when compared to using separate processors or computers. However, the size of the performance increase depends on the number of cores, the level of real concurrency in the actual software, and the use of shared resources.</li>
+<li><b>Isolation</b>. Multicore processors <i>may</i> improve (but do <i>not</i> guarantee) spatial and <a href="https://en.wikipedia.org/wiki/Temporal_isolation">temporal isolation</a> (segregation) compared to single-core architectures. Software running on one core is less likely to affect software on another core than if both are executing on the same single core. This decoupling is due to both spatial isolation (of data in core-specific cashes) and temporal isolation, because threads on one core are not delayed by threads on another core. Multicore processing may also improve robustness by localizing the impact of defects to single core. This increased isolation is particularly important in the independent execution of <a href="https://insights.sei.cmu.edu/sei_blog/2011/04/ensuring-safety-in-cyber-physical-systems.html">mixed-criticality applications</a> (mission-critical, safety critical, and security-critical).</li>
+<li><b>Reliability and Robustness</b>. Allocating software to multiple cores increases reliability and robustness (i.e., fault and failure tolerance) by limiting fault and/or failure propagation from software on one core to software on another. The allocation of software to multiple cores also supports failure tolerance by supporting failover from one core to another (and subsequent recovery).</li>
+<li><b>Obsolescence Avoidance</b>. The use of multicore processors enables architects to avoid technological obsolescence and improve maintainability. Chip manufacturers are applying the latest technical advances to their multicore chips. As the number of cores continues to increase, it becomes increasingly hard to obtain single-core chips.</li>
+<li><b>Hardware Costs</b>. By using multicore processors, architects can produce systems with fewer computers and processors.</li>
+</ol>
+<p><b>Cons of Multicore Processing</b></p>
+<p>Although there are many advantages to moving to multicore processors, architects must address disadvantages and associated risks in the following six areas:</p>
+<ol>
+<li><b>Shared Resources</b>. Cores on the same processor share both <i>processor-internal</i> resources (L3 cache, system bus, memory controller, I/O controllers, and interconnects) and <i>processor-external</i> resources (main memory, I/O devices, and networks). These shared resources imply (1) the existence of single points of failure, (2) two applications running on the <i>same</i> core can interfere with each other, and (3) software running on one core can impact software running on <i>another</i> core (i.e., interference can violate spatial and temporal isolation because multicore support for isolation is limited). The diagram below uses the color red to illustrate six shared resources.</li>
+<li><b>Interference</b>. Interference occurs when software executing on one core impacts the behavior of software executing on other cores in the same processor. This interference includes failures of both <i>spatial</i> isolation (due to shared memory access) and failure of <i>temporal</i> isolation (due to interference delays and/or penalties). Temporal isolation is a bigger problem than spatial isolation since multicore processors may have special hardware that can be used to enforce spatial isolation (to prevent software running on different cores from accessing the same processor-internal memory). The number of interference paths increases rapidly with the number of cores and the exhaustive analysis of all interference paths is often impossible. The impracticality of exhaustive analysis necessitates the selection of representative interference paths when analyzing isolation. The following diagram uses the color red to illustrate three possible interference paths between pairs of applications involving six shared resources.</li>
+<li><b>Concurrency Defects</b>. Cores execute concurrently, creating the potential for concurrency defects including <a href="https://en.wikipedia.org/wiki/Deadlock">deadlock</a>, <a href="https://en.wikipedia.org/wiki/Deadlock#Livelock">livelock</a>, <a href="https://en.wikipedia.org/wiki/Starvation_(computer_science)">starvation</a>, suspension, (data) <a href="https://en.wikipedia.org/wiki/Race_condition">race conditions</a>, priority inversion, order violations, and atomicity violations. Note that these are essentially the same types of concurrency defects that can occur when software is allocated to multiple threads on a single core.</li>
+<li><b>Non-determinism</b>. Multicore processing increases non-determinism. For example, I/O Interrupts have top-level hardware priority (also a problem with single core processors). Multicore processing is also subject to lock trashing, which stems from excessive lock conflicts due to simultaneous access of kernel services by different cores (resulting in decreased concurrency and performance). The resulting non-deterministic behavior can be unpredictable, can cause related faults and failures, and can make testing more difficult (e.g., running the same test multiple times may not yield the same test result).</li>
+<li><b>Analysis Difficulty</b>. The real concurrency due to multicore processing requires different memory consistency models than virtual interleaved concurrency. It also breaks traditional analysis approaches for work on single core processors. The analysis of maximum time limits is harder and may be overly conservative. Although interference analysis becomes more complex as the number of cores-per-processor increases, overly-restricting the core number may not provide adequate performance.</li>
+<li><b>Accreditation and Certification</b>. Interference between cores can cause missed deadlines and excessive <a href="https://en.wikipedia.org/wiki/Jitter">jitter</a>, which in turn can cause faults (hazards) and failures (accidents). Verifying a multicore system requires proper real-time scheduling and timing analysis and/or specialized performance testing. Moving from a single-core to a multicore architecture may require recertification. Unfortunately, current safety policy guidelines are based on single-core architectures and must be updated based on the recommendations that will be listed in the final blog entry in this series.</li>
+</ol>
+<p><img width="975" height="588" class="mt-image-none" alt="firesmith_secondmulticore_figure3.png" src="./Multicore Processing_files/firesmith_secondmulticore_figure3.png"></p>
+<p><b>SEI-Research on Multicore Processing</b></p>
+<p class="Body">Real-time scheduling on multicore processing platforms is a Department of Defense (DoD) technical area of urgent concern for <a href="https://insights.sei.cmu.edu/sei_blog/2016/10/verifying-distributed-adaptive-real-time-systems.html">unmanned aerial vehicles (UAVs)</a> and other systems that demand ever-increasing computational power. SEI researchers have provided a range of <a href="https://insights.sei.cmu.edu/sei_blog/2012/03/real-time-scheduling-on-heterogenous-multicore-processors.html">techniques and tools that improve scheduling on multicore processors</a>. We developed a mode-change protocol for multicores with several operational modes, such as aircraft taxi, takeoff, flight, and landing modes. The SEI developed the first protocol to allow multicore software to switch modes while meeting all timing requirements, thereby allowing software designers add or remove software functions while ensuring safety.</p>
+<p class="Body">This SEI is transitioning this research through activities that include the following:</p>
+<ul>
+<li>a workshop with participants from Carnegie Mellon University, Nagoya University, the University of Illinois at Urbana-Champaign, and NEC Electronics</li>
+<li>collaboration with Lockheed-Martin researchers to publish papers on the use of multicore architectures in cyber-physical systems</li>
+<li>invited talks at conferences such as <a href="http://www.rtcsa.org/index.html">IEEE International Conference on Embedded and Real-Time Computing Systems and Applications</a></li>
+<li>authoring a chapter of the <a href="https://www.multicore-association.org/request_mpp.php"><i>Multicore Programming Practices Guide</i></a> published by The Multicore Association</li>
+</ul>
+<p><b>Associated Research Projects</b></p>
+<ul>
+<li><a href="http://resources.sei.cmu.edu/asset_files/technicalreport/2011_005_001_15377.pdf">Achieving Predictable Performance in Multicore Embedded Real-Time Systems</a> (See page 47)</li>
+<li><a href="https://insights.sei.cmu.edu/sei_blog/2011/10/toward-safe-optimization-of-cyber-physical-systems.html">Safe Resource Optimization of Mixed-Criticality Cyber-Physical Systems</a></li>
+<li><a href="http://resources.sei.cmu.edu/asset_files/technicalreport/2013_005_001_57593.pdf">Real-Time Scheduling on Heterogeneous Multicores</a> (page 133)</li>
+<li><a href="https://resources.sei.cmu.edu/library/asset-view.cfm?assetid=493832">High-Confidence Cyber-Physical Systems</a></li>
+</ul>
+<p><b>Future Blog Entries</b></p>
+<p>The next two blog entries in this series will define virtualization via virtual machines and containers, list their current trends, and document their pros and cons. These postings will be followed by a final blog entry providing general recommendations regarding the use of these three technologies.</p>
+<p><b>Additional Resources</b></p>
+<p>Read the introductory post in this series.</p>
+<p>Read <a href="http://insights.sei.cmu.edu/author/donald-firesmith/">all blog posts by Don Firesmith</a>.</p>
+<p></p>
+<p></p>
+              </div>
+            </article>
+
+            <!-- Additional Resources -->
+            
+
+            
+              
+                
+
+                  <!-- Social Share -->
+                  <div class="row d-print-none">
+                    <div class="col-sm-12 col-md-12 col-12 social-share">
+                      <h2>Share</h2>
+                      <ul class="sei-share social-share__list pl-0">
+                        <li class="social-share__list-item">
+                          <a href="https://www.facebook.com/sharer.php?u=https%3A%2F%2Finsights.sei.cmu.edu%2Fsei_blog%2F2017%2F08%2Fmulticore-processing.html&amp;t=Multicore%20Processing" target="_blank" title="Share on Facebook"><i class="fa fa-facebook"></i></a>
+                        </li>
+                        <li class="social-share__list-item">
+                          <a class="sei-share-twitter social-share__link--twitter" href="http://twitter.com/intent/tweet?source=sharethiscom&amp;text=Multicore%20Processing&amp;url=https%3A%2F%2Finsights.sei.cmu.edu%2Fsei_blog%2F2017%2F08%2Fmulticore-processing.html" target="_blank" title="Share on Twitter"><i class="fa fa-twitter"></i></a>
+                        </li>
+                        <li class="social-share__list-item">
+                          <a class="sei-share-linkedin social-share__link--linkedin" href="https://www.linkedin.com/shareArticle?mini=true&amp;url=https%3A%2F%2Finsights.sei.cmu.edu%2Fsei_blog%2F2017%2F08%2Fmulticore-processing.html&amp;title=Multicore%20Processing" title="Share on LinkedIn"><i class="fa fa-linkedin"></i></a>
+                        </li>
+                        <li class="social-share__list-item">
+                          <a class="sei-share-email social-share__link--email" href="mailto:?subject=Multicore%20Processing&amp;body=https%3A%2F%2Finsights.sei.cmu.edu%2Fsei_blog%2F2017%2F08%2Fmulticore-processing.html" target="_blank" title="Share via Email"> <i class="fa fa-envelope"></i></a>
+                        </li>
+                        <li class="social-share__list-item">
+                          <a class="sei-share-print social-share__link--print" href="javascript:;" onclick="javascript:window.print()" target="_blank" title="Print this article">
+                            <i class="fa fa-print"></i></a>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <!-- About the Author -->
+                  <h2>About the Author</h2>
+                  <div class="m-media-object__listing">
+                    <div class="media bg-gray p-0">
+                      <img class="d-flex mr-4 img-fluid" img="" id="auth" src="./Multicore Processing_files/userpic-34-180x180.png" align="left" alt="Donald Firesmith">
+                      <div class="media-body pl-3"><h4>Donald Firesmith</h4><p class="mb-0 pb-3"><a href="https://www.sei.cmu.edu/contact-us/index.cfm?f=Donald&amp;l=Firesmith"><i class="fa fa-envelope"></i> Contact</a></p><p class="mb-0 pb-0"><a href="https://insights.sei.cmu.edu/author/donald-firesmith">View all blog posts <i class="fa fa-angle-double-right" aria-hidden="true"></i></a></p>
+                        <p class="mb-0 pb-0"><a href="http://resources.sei.cmu.edu/library/author.cfm?authorID=4637">View other publications <i class="fa fa-angle-double-right" aria-hidden="true"></i></a></p>
+                      </div>
+                    </div>
+                  </div>
+
+            
+            
+            <!-- Comments **** This is set to Blog ID 11 so no comments show. Set to 9 if comments are enabled. **** -->
+            
+
+          </div><!-- END - Post container LEFT column -->
+          <div class="col-sm-12 col-md-3 col-lg-3 col-12 d-print-none">
+            <!-- Post container RIGHT column -->
+            <div class="bg-gray p-3 mb-4">
+              <h4>Subscribe</h4>
+              <p><strong><a href="https://insights.sei.cmu.edu/sei_blog/rss.xml"><i class="fa fa-rss"></i>
+                    SEI Blog RSS
+                  </a></strong></p>
+                
+                    <p><strong><a href="https://insights.sei.cmu.edu/sei_blog/subscribe.html"><i class="fa fa-envelope"></i>
+                      SEI Blog Mailing List
+                    </a></strong></p>
+                
+                
+            </div>
+            <nav class="widget-archive-monthly widget">
+  <div class="bg-gray p-3 mb-4">
+    <h4>
+      SEI Blog
+      
+      
+       Archive</h4>
+    <p><strong>Recent</strong></p>
+    <div class="widget-content">
+      <ul class="list-unstyled">
+        
+          <li class="widget-list__item">
+            <a href="https://insights.sei.cmu.edu/sei_blog/2019/12/">
+              December 2019 (1)
+            </a>
+          </li>
+        
+          <li class="widget-list__item">
+            <a href="https://insights.sei.cmu.edu/sei_blog/2019/11/">
+              November 2019 (4)
+            </a>
+          </li>
+        
+          <li class="widget-list__item">
+            <a href="https://insights.sei.cmu.edu/sei_blog/2019/10/">
+              October 2019 (6)
+            </a>
+          </li>
+        
+          <li class="widget-list__item">
+            <a href="https://insights.sei.cmu.edu/sei_blog/2019/09/">
+              September 2019 (5)
+            </a>
+          </li>
+        
+          <li class="widget-list__item">
+            <a href="https://insights.sei.cmu.edu/sei_blog/2019/08/">
+              August 2019 (4)
+            </a>
+          </li>
+        
+          <li class="widget-list__item">
+            <a href="https://insights.sei.cmu.edu/sei_blog/2019/07/">
+              July 2019 (5)
+            </a>
+          </li>
+        
+        <p class="pt-4"><strong>Year</strong></p>
+        
+          <li class="widget-list__item">
+            <a href="https://insights.sei.cmu.edu/sei_blog/2019/">
+              2019 (50)
+            </a>
+          </li>
+        
+          <li class="widget-list__item">
+            <a href="https://insights.sei.cmu.edu/sei_blog/2018/">
+              2018 (50)
+            </a>
+          </li>
+        
+          <li class="widget-list__item">
+            <a href="https://insights.sei.cmu.edu/sei_blog/2017/">
+              2017 (50)
+            </a>
+          </li>
+        
+          <li class="widget-list__item">
+            <a href="https://insights.sei.cmu.edu/sei_blog/2016/">
+              2016 (49)
+            </a>
+          </li>
+        
+          <li class="widget-list__item">
+            <a href="https://insights.sei.cmu.edu/sei_blog/2015/">
+              2015 (50)
+            </a>
+          </li>
+        
+          <li class="widget-list__item">
+            <a href="https://insights.sei.cmu.edu/sei_blog/2014/">
+              2014 (55)
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+  </nav>
+  
+          </div><!-- END - Post container RIGHT column -->
+        </div>
+
+        <!-- Previous/Next -->
+        <div class="row row justify-content-between generic pb-0 d-print-none">
+          <div class="col-sm-6">
+            
+              <a href="https://insights.sei.cmu.edu/sei_blog/2017/08/multicore-and-virtualization-an-introduction.html" title="Previous" class="previous-next__link previous-next__link--blog">
+                <div class="text-left p-3 border bg-light" style="height: 100%">
+                  <div class="previous-next previous">
+                    <span class="link-cta-previous pb-2">Previous Article</span>
+                  </div>
+                  <h3 class="mb-0">Multicore and Virtualization: An Introduction </h3>
+                </div>
+              </a>
+            
+          </div>
+          <div class="col-sm-6">
+            
+              <a href="https://insights.sei.cmu.edu/sei_blog/2017/08/pharos-binary-static-analysis-tools-released-on-github.html" title="Next" class="previous-next__link previous-next__link--blog">
+                <div class="text-right p-3 border" style="height: 100%">
+                    <div class="previous-next next">
+                      <span class="link-cta pb-2">Next Article</span>
+                    </div>
+                  <h3 class="mb-0">Pharos Binary Static Analysis Tools Released on GitHub</h3>
+                </div>
+              </a>
+            
+          </div>
+          </div>
+        </div> 
+
+      </section></div><!-- END - Post container -->
+    
+
+    <!-- Footer navigation include -->
+    
+
+<footer class="pre-footer py-4">
+  <div class="container">
+    <div class="row d-print-none">
+      <div class="col-12 col-sm">
+        <p class="text-center py-2 mb-0"><strong><a href="https://insights.sei.cmu.edu/authors.html">Browse by Author</a></strong></p>
+      </div>
+      <div class="col-12 col-sm">
+        <p class="text-center py-2 mb-0"><strong><a href="https://insights.sei.cmu.edu/cats.html">Explore Subjects</a></strong></p>
+      </div>
+    </div>
+  </div>
+</footer>
+<footer class="main-footer main-footer__blog">
+  <div class="container">
+    <div class="row">
+      <div class="col-12 col-md footer-info">
+        <p>Carnegie Mellon University<br> Software Engineering Institute<br> 4500 Fifth Avenue<br> Pittsburgh,
+          PA 15213-2612<br> <a href="tel:+14122685800">412-268-5800</a><br></p>
+      </div>
+      <!--col-->
+      <div class="col-12 col-md footer-social d-print-none">
+        <div id="cs_control_4764" class="cs_control  CS_Element_LinkBar">
+          <ul class="social">
+            <li><a href="https://www.facebook.com/SEICMU/" class="facebook" target="_blank"></a></li>
+            <li><a href="https://twitter.com/SEInews" class="twitter" target="_blank"></a></li>
+            <li><a href="https://www.linkedin.com/company/software-engineering-institute" class="linkedin" target="_blank"></a></li>
+            <li><a href="https://www.youtube.com/user/TheSEICMU" class="youtube" target="_blank"></a></li>
+            <li><a href="https://itunes.apple.com/us/podcast/software-engineering-institute-sei-podcast-series/id566573552?mt=2" class="itunes" target="_blank"></a></li>
+          </ul>
+        </div>
+      </div>
+      <!--col-->
+      <div class="col-12 col-md footer-cta d-print-none">
+        <a class="btn btn-outline-light btn-block btn-lg btn-big" href="https://insights.sei.cmu.edu/contact-us/">Contact Us</a>
+      </div>
+      <!--col-->
+    </div>
+    <div class="row">
+      <div class="col-md footer-info d-print-none">
+        <div id="cs_control_4762" class="cs_control  CS_Element_LinkBar">
+          <ul class="list-unstyled list-inline">
+            <li class="list-inline-item">
+              <a href="https://www.sei.cmu.edu/locations/index.cfm" target=""><small>Office Locations</small>
+              </a>
+            </li>
+            <li class="list-inline-item">
+              <a href="https://www.sei.cmu.edu/additional-sites-directory/index.cfm" target=""><small>Additional
+                  Sites Directory</small>
+              </a>
+            </li>
+            <li class="list-inline-item">
+              <a href="https://www.sei.cmu.edu/legal/index.cfm" target=""><small>Legal Info</small>
+              </a>
+            </li>
+            <li class="list-inline-item">
+              <a href="https://www.cmu.edu/hr/ethics-hotline/" target=""><small>CMU Ethics Hotline</small>
+              </a>
+            </li>
+            <li class="list-inline-item">
+              <a href="https://www.sei.cmu.edu/index.cfm" target=""><small>www.sei.cmu.edu</small>
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col-md footer-info">
+        <p><small class="copyright">©2019 Carnegie Mellon University</small></p>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script type="text/javascript" src="./Multicore Processing_files/bootstrap.min.js.下载"></script>
+
+
+
+<div id="inviteSnippet" style="position:fixed;right:20px;bottom:20px;width:280px;padding:20px;margin:0;border-radius:6px;background:#333333;color:#EEEEEE;text-align:left;z-index:2200000000;opacity:0;transition:opacity 500ms;-webkit-transition:opacity 500ms;">
+   <div id="inviteMessage" style="padding:0;margin:0 0 20px 0;font-size:16px;">We're redesigning the blog—you can help by telling us about your blog experience.</div>
+   <a id="inviteOk" href="https://sei.az1.qualtrics.com/jfe/form/SV_2nNhGal123Jwehf" onclick="setInviteCookie();this.parentNode.style.display=&quot;none&quot;;" target="_blank" style="color:#00CDED;font-size:16px;font-weight:bold;text-decoration:underline;">I'll do it</a>
+  <a id="inviteCancel" href="javascript:void(0)" onclick="setInviteCookie();this.parentNode.style.display=&quot;none&quot;;" style="color:#EEEEEE;font-size:14px;text-decoration:underline;float:right;">No thanks</a>
+</div>
+		<script>
+        var setInviteCookie=function(){
+        	var date=new Date();date.setMonth(date.getMonth()+1);
+
+           document.cookie='sei-blog-invite=Done;path=/;expires='+date.toUTCString()+';';
+        }
+				
+				var owOnload=function(){
+						if(-1==document.cookie.indexOf('sei-blog-invite')){
+							try
+								{var o=document.getElementById('inviteSnippet');
+								
+								
+									setTimeout(function(){
+										o.style.display='block',o.style.opacity=1
+									},
+									2e3)
+							}
+							catch(e){}
+						}
+					
+				};
+
+				if(window.addEventListener)
+					{window.addEventListener('load',function(){
+						owOnload();
+					});
+				}
+				else if (window.attachEvent)
+					{window.attachEvent('onload',function(){owOnload();}
+				);}
+	   </script>
+
+
+
+
+<script id="f5_cspm">(function(){var f5_cspm={f5_p:'MPIMEDKAGFEKPHGFEMNIFCHGHBFCAOBKGHMOHLHODCFGINDGKABEKFLOLIDGLDHBILOBOOAHAABCKOHJCEBAGBNDAAFANGKIICDGFKLAALHIIKAAANMCJMAMBDCMHJGH',setCharAt:function(str,index,chr){if(index>str.length-1)return str;return str.substr(0,index)+chr+str.substr(index+1);},get_byte:function(str,i){var s=(i/16)|0;i=(i&15);s=s*32;return((str.charCodeAt(i+16+s)-65)<<4)|(str.charCodeAt(i+s)-65);},set_byte:function(str,i,b){var s=(i/16)|0;i=(i&15);s=s*32;str=f5_cspm.setCharAt(str,(i+16+s),String.fromCharCode((b>>4)+65));str=f5_cspm.setCharAt(str,(i+s),String.fromCharCode((b&15)+65));return str;},set_latency:function(str,latency){latency=latency&0xffff;str=f5_cspm.set_byte(str,40,(latency>>8));str=f5_cspm.set_byte(str,41,(latency&0xff));str=f5_cspm.set_byte(str,35,2);return str;},wait_perf_data:function(){try{var wp=window.performance.timing;if(wp.loadEventEnd>0){var res=wp.loadEventEnd-wp.navigationStart;if(res<60001){var cookie_val=f5_cspm.set_latency(f5_cspm.f5_p,res);window.document.cookie='f5avr0051023953aaaaaaaaaaaaaaaa='+encodeURIComponent(cookie_val)+';path=/';}
+return;}}
+catch(err){return;}
+setTimeout(f5_cspm.wait_perf_data,100);return;},go:function(){var chunk=window.document.cookie.split(/\s*;\s*/);for(var i=0;i<chunk.length;++i){var pair=chunk[i].split(/\s*=\s*/);if(pair[0]=='f5_cspm'&&pair[1]=='1234')
+{var d=new Date();d.setTime(d.getTime()-1000);window.document.cookie='f5_cspm=;expires='+d.toUTCString()+';path=/;';setTimeout(f5_cspm.wait_perf_data,100);}}}}
+f5_cspm.go();}());</script></body></html>

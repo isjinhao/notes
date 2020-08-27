@@ -1,0 +1,345 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<!-- saved from url=(0060)https://martinfowler.com/bliki/ServiceOrientedAmbiguity.html -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta content="uft-8" name="charset">
+
+<title>ServiceOrientedAmbiguity</title>
+
+<meta content="summary" name="twitter:card">
+
+<meta content="16665197" name="twitter:site:id">
+
+<meta content="bliki: ServiceOrientedAmbiguity" property="og:title">
+
+<meta content="https://martinfowler.com/bliki/ServiceOrientedAmbiguity.html" property="og:url">
+
+<meta content="a bliki entry for ServiceOrientedAmbiguity" property="og:description">
+
+<meta content="https://martinfowler.com/logo-sq.png" property="og:image">
+
+<meta content="martinfowler.com" property="og:site_name">
+
+<meta content="article" property="og:type">
+
+<meta content="2005-07-01 00:00:00 -0400" property="og:article:modified_time">
+
+<meta content="width=device-width, initial-scale=1" name="viewport">
+
+<link href="./ServiceOrientedAmbiguity_files/entry.css" rel="stylesheet" type="text/css">
+</head>
+
+<body><header id="banner" style="background-image: url(&quot;../img/bloomsbury.png&quot;); background-repeat: no-repeat">
+
+<div class="name-logo"><a href="https://martinfowler.com/"><img src="./ServiceOrientedAmbiguity_files/mf-name-white.png"></a></div>
+  <div class="search">
+    <!-- SiteSearch Google -->
+    <form method="GET" action="https://www.google.com/search">
+      <input type="hidden" name="ie" value="UTF-8">
+      <input type="hidden" name="oe" value="UTF-8">
+      <input class="field" type="text" name="q" size="15" maxlength="255" value="">
+      <button class="button" type="submit" name="btnG" value=" " title="Search">
+      <input type="hidden" name="domains" value="martinfowler.com">
+      <input type="hidden" name="sitesearch" value=""> 
+      <input type="hidden" name="sitesearch" value="martinfowler.com">
+    
+  </button></form></div>
+
+<div class="menu-button navmenu-button"><a class="icon icon-bars" href="https://martinfowler.com/bliki/ServiceOrientedAmbiguity.html#navmenu-bottom"></a></div>
+
+<nav class="top-menu">
+<ul>
+<li><a class="" href="https://refactoring.com/">Refactoring</a></li>
+
+<li><a class="" href="https://martinfowler.com/agile.html">Agile</a></li>
+
+<li><a class="" href="https://martinfowler.com/architecture">Architecture</a></li>
+
+<li><a class="" href="https://martinfowler.com/aboutMe.html">About</a></li>
+
+<li><a class="tw" href="https://www.thoughtworks.com/">ThoughtWorks</a></li>
+
+<li><a class="icon icon-rss" href="https://martinfowler.com/feed.atom" title="feed"></a></li>
+
+<li><a class="icon icon-twitter" href="https://www.twitter.com/martinfowler" title="twitter stream"></a></li>
+</ul>
+</nav>
+</header>
+<nav id="top-navmenu">
+<nav class="navmenu">
+<div class="nav-head">  <div class="search">
+    <!-- SiteSearch Google -->
+    <form method="GET" action="https://www.google.com/search">
+      <input type="hidden" name="ie" value="UTF-8">
+      <input type="hidden" name="oe" value="UTF-8">
+      <input class="field" type="text" name="q" size="15" maxlength="255" value="">
+      <button class="button" type="submit" name="btnG" value=" " title="Search">
+      <input type="hidden" name="domains" value="martinfowler.com">
+      <input type="hidden" name="sitesearch" value=""> 
+      <input type="hidden" name="sitesearch" value="martinfowler.com">
+    
+  </button></form></div>
+
+<div class="closediv">
+<span class="close" title="close"></span>
+</div>
+</div>
+
+<div class="nav-body">
+<div class="topics">
+<h2>Topics</h2>
+
+<p><a href="https://martinfowler.com/architecture">Architecture</a></p>
+
+<p><a href="https://refactoring.com/">Refactoring</a></p>
+
+<p><a href="https://martinfowler.com/agile.html">Agile</a></p>
+
+<p><a href="https://martinfowler.com/delivery.html">Delivery</a></p>
+
+<p><a href="https://martinfowler.com/microservices">Microservices</a></p>
+
+<p><a href="https://martinfowler.com/data">Data</a></p>
+
+<p><a href="https://martinfowler.com/testing">Testing</a></p>
+
+<p><a href="https://martinfowler.com/dsl.html">DSL</a></p>
+</div>
+
+<div class="about">
+<h2>about me</h2>
+
+<p><a href="https://martinfowler.com/aboutMe.html">About</a></p>
+
+<p><a href="https://martinfowler.com/books">Books</a></p>
+
+<p><a href="https://martinfowler.com/faq.html">FAQ</a></p>
+</div>
+
+<div class="content">
+<h2>content</h2>
+
+<p><a href="https://martinfowler.com/videos.html">Videos</a></p>
+
+<p><a href="https://martinfowler.com/tags">Content Index</a></p>
+
+<p><a href="https://martinfowler.com/articles/eurogames">Board Games</a></p>
+
+<p><a href="https://martinfowler.com/photos">Photography</a></p>
+</div>
+
+<div class="tw">
+<h2>ThoughtWorks</h2>
+
+<p><a href="https://thoughtworks.com/insights">Insights</a></p>
+
+<p><a href="https://thoughtworks.com/careers">Careers</a></p>
+
+<p><a href="https://thoughtworks.com/products">Products</a></p>
+</div>
+
+<div class="feeds">
+<h2>follow</h2>
+
+<p><a href="https://www.twitter.com/martinfowler">Twitter</a></p>
+
+<p><a href="https://martinfowler.com/feed.atom">RSS</a></p>
+</div>
+</div>
+</nav>
+</nav>
+
+<main>
+<article>
+<h1><a href="https://martinfowler.com/bliki/ServiceOrientedAmbiguity.html">ServiceOrientedAmbiguity</a></h1>
+
+<p class="date">1 July 2005</p>
+
+<div class="frontMatter">
+<div class="author">
+<p class="author-photo"><a href="https://martinfowler.com/"><img src="./ServiceOrientedAmbiguity_files/mf.jpg" title="Photo of Martin Fowler"></a></p>
+
+<p class="name"><a href="https://martinfowler.com/" rel="author">Martin Fowler</a></p>
+</div>
+
+<div class="spacer"></div>
+
+<div class="tags">
+<p class="tag-link"><a href="https://martinfowler.com/tags/application%20integration.html">application integration</a></p>
+</div>
+</div>
+
+<div class="clear"></div>
+
+<div class="paperBody">
+<p>Whenever ThoughtWorks rashly lets me out in front of a client,
+	one question I'm bound to be asked is "what do you think of SOA
+	(Service Oriented Architecture)?" It's a question that's pretty much
+	impossible to answer because SOA means so many different things to
+	different people.</p>
+
+<ul>
+<li>For some SOA is about exposing software through web
+	services. This crowd further sub-divides into those that expect the
+	various WS-* standards and those that will accept any form of XML
+	over http (and maybe not even XML).</li>
+
+<li>For some SOA implies an architecture where applications
+	disappear. Instead you have core services that supply business
+	functionality and data separated by UI aggregators that apply
+	presentations that aggregate together the stuff that core services
+	provide.</li>
+
+<li>For some SOA is about allowing systems to communicate over
+	some form of standard structure (usually XML based) with other
+	applications. In it's worse form this is "CORBA with angle
+	brackets". In more sophisticated forms this involves coming up with
+	some form of standard backbone for an organization and getting
+	applications to work with this. This backbone may or may not involve
+	http.</li>
+
+<li>For some SOA is all about using (mostly) asynchronous messaging to
+	transfer documents between different systems. Essentially this is
+	EAI without all the expensive EAI vendors locking you in.</li>
+</ul>
+
+<p>I've heard people say the nice thing about SOA is that it
+	separates data from process, that it combines data and process, that
+	it uses web standards, that it's independent of web standards, that
+	it's asynchronous, that it's synchronous, that the synchronicity
+	doesn't matter....</p>
+
+<p>I was at Microsoft PDC a couple of years ago. I sat through a
+day's worth of presentations on SOA - at the end I was on the SOA
+panel. I played it for laughs by asking if anyone else understood what
+on earth SOA was. Afterwards someone made the comment that this
+ambiguity was also something that happened with Object Orientation.
+There's some truth in that, there were (and are) some divergent views
+on what OO means. But there's far less Object Ambiguity than the there
+is Service Oriented Ambiguity.</p>
+
+<p>So what do we do? For a start we have to remember all the time
+about how many different (and mostly incompatible) ideas fall under
+the SOA camp. These do need to be properly described (and named)
+independently of SOA. I think SOA has turned into a semantics-free
+concept that can join 'components' and 'architecture'. It's beyond
+saving - so the concrete ideas that do have some substance need to get
+an independent life.</p>
+</div>
+</article>
+
+<div class="clear"></div>
+</main>
+
+<nav id="bottom-navmenu" style="display: none;">
+<nav class="navmenu">
+<div class="nav-head">  <div class="search">
+    <!-- SiteSearch Google -->
+    <form method="GET" action="https://www.google.com/search">
+      <input type="hidden" name="ie" value="UTF-8">
+      <input type="hidden" name="oe" value="UTF-8">
+      <input class="field" type="text" name="q" size="15" maxlength="255" value="">
+      <button class="button" type="submit" name="btnG" value=" " title="Search">
+      <input type="hidden" name="domains" value="martinfowler.com">
+      <input type="hidden" name="sitesearch" value=""> 
+      <input type="hidden" name="sitesearch" value="martinfowler.com">
+    
+  </button></form></div>
+
+<div class="closediv">
+<span class="close" title="close"></span>
+</div>
+</div>
+
+<div class="nav-body">
+<div class="topics">
+<h2>Topics</h2>
+
+<p><a href="https://martinfowler.com/architecture">Architecture</a></p>
+
+<p><a href="https://refactoring.com/">Refactoring</a></p>
+
+<p><a href="https://martinfowler.com/agile.html">Agile</a></p>
+
+<p><a href="https://martinfowler.com/delivery.html">Delivery</a></p>
+
+<p><a href="https://martinfowler.com/microservices">Microservices</a></p>
+
+<p><a href="https://martinfowler.com/data">Data</a></p>
+
+<p><a href="https://martinfowler.com/testing">Testing</a></p>
+
+<p><a href="https://martinfowler.com/dsl.html">DSL</a></p>
+</div>
+
+<div class="about">
+<h2>about me</h2>
+
+<p><a href="https://martinfowler.com/aboutMe.html">About</a></p>
+
+<p><a href="https://martinfowler.com/books">Books</a></p>
+
+<p><a href="https://martinfowler.com/faq.html">FAQ</a></p>
+</div>
+
+<div class="content">
+<h2>content</h2>
+
+<p><a href="https://martinfowler.com/videos.html">Videos</a></p>
+
+<p><a href="https://martinfowler.com/tags">Content Index</a></p>
+
+<p><a href="https://martinfowler.com/articles/eurogames">Board Games</a></p>
+
+<p><a href="https://martinfowler.com/photos">Photography</a></p>
+</div>
+
+<div class="tw">
+<h2>ThoughtWorks</h2>
+
+<p><a href="https://thoughtworks.com/insights">Insights</a></p>
+
+<p><a href="https://thoughtworks.com/careers">Careers</a></p>
+
+<p><a href="https://thoughtworks.com/products">Products</a></p>
+</div>
+
+<div class="feeds">
+<h2>follow</h2>
+
+<p><a href="https://www.twitter.com/martinfowler">Twitter</a></p>
+
+<p><a href="https://martinfowler.com/feed.atom">RSS</a></p>
+</div>
+</div>
+</nav>
+</nav>
+<footer id="page-footer">
+<div class="tw-logo">
+<a href="http://www.thoughtworks.com/">
+<img src="./ServiceOrientedAmbiguity_files/tw-white-300.png">
+</a>
+</div>
+<div class="menu-button">
+<div class="icon-bars navmenu-button"></div>
+</div>
+<div class="copyright">
+<p>© Martin Fowler | <a href="http://www.thoughtworks.com/privacy-policy">Privacy Policy</a> | <a href="https://martinfowler.com/aboutMe.html#disclosures">Disclosures</a></p>
+</div>
+</footer>
+<!-- Google Analytics -->
+<script>
+window.ga=window.ga||function(){(ga.q=ga.q||[]).push(arguments)};ga.l=+new Date;
+ga('create', 'UA-17005812-1', 'auto');
+ga('send', 'pageview');
+</script>
+<script async="" src="./ServiceOrientedAmbiguity_files/analytics.js.下载"></script>
+<!-- End Google Analytics -->
+
+
+
+<script src="./ServiceOrientedAmbiguity_files/jquery-1.11.3.min.js.下载" type="text/javascript"></script>
+
+<script src="./ServiceOrientedAmbiguity_files/mfcom.js.下载" type="text/javascript"></script>
+
+
+</body></html>
