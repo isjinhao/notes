@@ -693,54 +693,35 @@ mySort2(dogs);
 ThreadLocal是一个线程局部变量，我们都知道全局变量和局部变量的区别，拿Java举例就是定义在类中的是全局的变量，各个方法中都能访问得到（静态方法不能获得实例属性），而局部变量定义在方法中，只能在方法内访问。那线程局部变量（ThreadLocal）就是每个线程都会有一个局部变量，独立于变量的初始化副本，而各个副本是通过线程唯一标识相关联的。
 
 ```java
-public class TaskThread extends Thread {
-	private UniqueThreadIdGenerator t;
-
-	public TaskThread(String threadName, UniqueThreadIdGenerator t) {
-		this.setName(threadName);
-		this.t = t;
-	}
-
-	@Override
-	public void run() {
-		for (int i = 0; i < 4; i++) {
-			try {
-				int value = t.getUniqueId();
-				System.out.println("thread[ " + Thread.currentThread().getName() + 
-                	" ] --> uniqueId[ " + value + " ]");
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-		}
-	}
-
-	public static void main(String[] args) {
-		UniqueThreadIdGenerator uniqueThreadId = new UniqueThreadIdGenerator();
-		// 为每个线程生成一个唯一的局部标识
-		TaskThread t1 = new TaskThread("custom-thread-1", uniqueThreadId);
-		TaskThread t2 = new TaskThread("custom-thread-2", uniqueThreadId);
-		TaskThread t3 = new TaskThread("custom-thread-3", uniqueThreadId);
-		t1.start();
-		t2.start();
-		t3.start();
-	}
+public class TestThreadLocal  {
+    public static void main(String[] args) {
+        // 为每个线程生成一个唯一的局部标识
+        ExecuteThread t1 = new ExecuteThread("custom-thread-1");
+        ExecuteThread t2 = new ExecuteThread("custom-thread-2");
+        ExecuteThread t3 = new ExecuteThread("custom-thread-3");
+        t1.start();
+        t2.start();
+        t3.start();
+    }
 }
-
-class UniqueThreadIdGenerator {
-
-	// 线程局部整型变量
-	private final ThreadLocal<Integer> uniqueNum = new ThreadLocal<Integer>() {
-		@Override
-		protected Integer initialValue() {
-			return 0;
-		}
-	};
-
-	// 变量值
-	public int getUniqueId() {
-		uniqueNum.set(uniqueNum.get() + 1);
-		return uniqueNum.get();
-	}
+class ExecuteThread extends Thread{
+    ThreadLocal<Integer> uniqueNum = ThreadLocal.withInitial(() -> 0);
+    public ExecuteThread(String threadName) {
+        this.setName(threadName);
+    }
+    @Override
+    public void run() {
+        for (int i = 0; i < 4; i++) {
+            try {
+                uniqueNum.set(uniqueNum.get() + 1);
+                int value = uniqueNum.get();
+                System.out.println("thread[ " + Thread.currentThread().getName() +
+                    " ] --> uniqueNum[ " + value + " ]");
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
 }
 
 // thread[ custom-thread-2 ] --> uniqueId[ 1 ]

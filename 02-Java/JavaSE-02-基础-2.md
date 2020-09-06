@@ -1278,7 +1278,7 @@ public class RegTest {
 
 - `.` ：任何字符（与行结束符可能匹配也可能不匹配） 
 - `\d` ：数字：[0-9] 
-- `\D` ：非数字： [^0-9] 
+- `\D` ：非数字：[^0-9]
 - `\s` ：空白字符：[ \t\n\x0B\f\r] 
 - `\S` ：非空白字符：[^\s] 
 - `\w` ：单词字符：[a-zA-Z_0-9] 
@@ -1318,6 +1318,7 @@ public class RegTest {
 
 查找子串需要使用到Pattern和Mather
 `[flid=1415279, ffid=BK-2898-20180922-A, frtt=20180922210700, frlt=20180923000300][flid=1417032, ffid=OD-689-20180923-D, fatt=2401, stat=BOR, ista=BOR]`
+
 ```java
 public class RegTest {
 	public static final String FFID = "((ffid=){1})\\w{2}-\\w{3,6}-\\d{8}-\\w";
