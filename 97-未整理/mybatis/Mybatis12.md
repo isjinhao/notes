@@ -466,24 +466,50 @@ private void settingsElement(Properties props) throws Exception {
     
     // cache 默认的开启的，关于cache会单独讲
     configuration.setCacheEnabled(booleanValueOf(props.getProperty("cacheEnabled"), true));
+    
+    // 动态代理的工厂类，有 CGLIB 和 JAVASSIST 两种，3.3版本以上默认是JAVASSIST。实际开发中无用
     configuration.setProxyFactory((ProxyFactory) createInstance(props.getProperty("proxyFactory")));
+    
+    // 延迟加载对象，实际开发中无用
     configuration.setLazyLoadingEnabled(booleanValueOf(props.getProperty("lazyLoadingEnabled"), false));
+    
+    // 延迟加载属性，实际开发中无用
     configuration.setAggressiveLazyLoading(booleanValueOf(props.getProperty("aggressiveLazyLoading"), false));
+    
+    // 允许单语句返回多结果集，需要数据库驱动的支持。我暂时还没遇到
     configuration.setMultipleResultSetsEnabled(booleanValueOf(props.getProperty("multipleResultSetsEnabled"), true));
+    
+    // 允许使用列标签代替列名，比如select NAME as SNAME from STUDENT; 中的SNAME是列标签，NAME是列名
     configuration.setUseColumnLabel(booleanValueOf(props.getProperty("useColumnLabel"), true));
+    
+    // 允许 JDBC 支持自动生成主键。如果设置为 true，将强制使用自动生成主键。所以一般不开启。
     configuration.setUseGeneratedKeys(booleanValueOf(props.getProperty("useGeneratedKeys"), false));
+    
+    // 设置默认的执行器，执行器有三种 SIMPLE REUSE BATCH。常用的是 SIMPLE和BATCH。后面会介绍如何使用 BATCH
     configuration.setDefaultExecutorType(ExecutorType.valueOf(props.getProperty("defaultExecutorType", "SIMPLE")));
+    
+    // 数据库驱动等待数据库响应的秒数
     configuration.setDefaultStatementTimeout(integerValueOf(props.getProperty("defaultStatementTimeout"), null));
+    
+    // 设置一次从数据库取多少条数据，默认不设置
     configuration.setDefaultFetchSize(integerValueOf(props.getProperty("defaultFetchSize"), null));
+    
+    // 是否开启驼峰命名自动映射，即从经典数据库列名 A_COLUMN 映射到经典 Java 属性名 aColumn。开不开启取决于自己的项目规范。
     configuration.setMapUnderscoreToCamelCase(booleanValueOf(props.getProperty("mapUnderscoreToCamelCase"), false));
     configuration.setSafeRowBoundsEnabled(booleanValueOf(props.getProperty("safeRowBoundsEnabled"), false));
     configuration.setLocalCacheScope(LocalCacheScope.valueOf(props.getProperty("localCacheScope", "SESSION")));
     configuration.setJdbcTypeForNull(JdbcType.valueOf(props.getProperty("jdbcTypeForNull", "OTHER")));
-    configuration.setLazyLoadTriggerMethods(stringSetValueOf(props.getProperty("lazyLoadTriggerMethods"), "equals,clone,hashCode,toString"));
+    
+    // 延迟加载的触发方法
+    configuration.setLazyLoadTriggerMethods(
+        stringSetValueOf(props.getProperty("lazyLoadTriggerMethods"), "equals,clone,hashCode,toString"));
     configuration.setSafeResultHandlerEnabled(booleanValueOf(props.getProperty("safeResultHandlerEnabled"), true));
     configuration.setDefaultScriptingLanguage(resolveClass(props.getProperty("defaultScriptingLanguage")));
+    
+    // 默认的枚举处理器
     @SuppressWarnings("unchecked")
-    Class<? extends TypeHandler> typeHandler = (Class<? extends TypeHandler>)resolveClass(props.getProperty("defaultEnumTypeHandler"));
+    Class<? extends TypeHandler> typeHandler = 
+        (Class<? extends TypeHandler>)resolveClass(props.getProperty("defaultEnumTypeHandler"));
     configuration.setDefaultEnumTypeHandler(typeHandler);
     configuration.setCallSettersOnNulls(booleanValueOf(props.getProperty("callSettersOnNulls"), false));
     configuration.setUseActualParamName(booleanValueOf(props.getProperty("useActualParamName"), true));
@@ -496,7 +522,104 @@ private void settingsElement(Properties props) throws Exception {
 }
 ```
 
+settings的解析非常复杂，但是绝大多数都使用默认设置就可以了，所以我们不花费过多的时间讨论。
 
+
+
+### loadCustomVfs
+
+虚拟文件系统的目的是屏蔽真实文件系统的差异。这里其实算不上文件系统，因为Mybatis里的VFS作用是从不同的位置加载文件，比如jar包
+
+XMLConfigBuilder.java
+
+```java
+private void loadCustomVfs(Properties props) throws ClassNotFoundException {
+    String value = props.getProperty("vfsImpl");
+    if (value != null) {
+        String[] clazzes = value.split(",");
+        for (String clazz : clazzes) {
+            if (!clazz.isEmpty()) {
+                @SuppressWarnings("unchecked")
+                Class<? extends VFS> vfsImpl = (Class<? extends VFS>)Resources.classForName(clazz);
+                configuration.setVfsImpl(vfsImpl);
+            }
+        }
+    }
+}
+```
+
+Configuration.java
+
+```java
+public void setVfsImpl(Class<? extends VFS> vfsImpl) {
+    if (vfsImpl != null) {
+        this.vfsImpl = vfsImpl;
+        VFS.addImplClass(this.vfsImpl);
+    }
+}
+```
+
+VFS.java
+
+```java
+public static final List<Class<? extends VFS>> USER_IMPLEMENTATIONS = new ArrayList<Class<? extends VFS>>();
+public static void addImplClass(Class<? extends VFS> clazz) {
+    if (clazz != null) {
+        USER_IMPLEMENTATIONS.add(clazz);
+    }
+}
+```
+
+
+
+
+
+### typeAliasesElement
+
+```java
+protected final Configuration configuration;
+private void typeAliasesElement(XNode parent) {
+    if (parent != null) {
+        for (XNode child : parent.getChildren()) {
+            if ("package".equals(child.getName())) {
+                String typeAliasPackage = child.getStringAttribute("name");
+                configuration.getTypeAliasRegistry().registerAliases(typeAliasPackage);
+            } else {
+                String alias = child.getStringAttribute("alias");
+                String type = child.getStringAttribute("type");
+                try {
+                    Class<?> clazz = Resources.classForName(type);
+                    if (alias == null) {
+                        typeAliasRegistry.registerAlias(clazz);
+                    } else {
+                        typeAliasRegistry.registerAlias(alias, clazz);
+                    }
+                } catch (ClassNotFoundException e) {
+                    throw new BuilderException("Error registering typeAlias for '" + alias + "'. Cause: " + e, e);
+                }
+            }
+        }
+    }
+}
+public TypeAliasRegistry getTypeAliasRegistry() {
+    return typeAliasRegistry;
+}
+public void registerAliases(String packageName){
+    registerAliases(packageName, Object.class);
+}
+public void registerAliases(String packageName, Class<?> superType){
+    ResolverUtil<Class<?>> resolverUtil = new ResolverUtil<Class<?>>();
+    resolverUtil.find(new ResolverUtil.IsA(superType), packageName);
+    Set<Class<? extends Class<?>>> typeSet = resolverUtil.getClasses();
+    for(Class<?> type : typeSet){
+        // Ignore inner classes and interfaces (including package-info.java)
+        // Skip also inner classes. See issue #6
+        if (!type.isAnonymousClass() && !type.isInterface() && !type.isMemberClass()) {
+            registerAlias(type);
+        }
+    }
+}
+```
 
 
 
