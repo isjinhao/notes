@@ -528,11 +528,10 @@ settings的解析非常复杂，但是绝大多数都使用默认设置就可以
 
 ### loadCustomVfs
 
-虚拟文件系统的目的是屏蔽真实文件系统的差异。这里其实算不上文件系统，因为Mybatis里的VFS作用是从不同的位置加载文件，比如jar包
-
-XMLConfigBuilder.java
+虚拟文件系统的目的是屏蔽真实文件系统的差异。这里其实算不上文件系统，因为Mybatis里的VFS作用是从不同的位置加载文件，比如从jar包中，从不同的类加载器中。最经典的案例就是Mybatis默认的DefaultVFS在SpringBoot中运行时不能加载到 `<package>` 标签配置的别名。这个案例不会在解析Mybatis的系列文章中给出，因为它还涉及到很多SpringBoot的知识。我们还是继续看对VFS的加载过程。
 
 ```java
+// XMLConfigBuilder.java
 private void loadCustomVfs(Properties props) throws ClassNotFoundException {
     String value = props.getProperty("vfsImpl");
     if (value != null) {
@@ -548,9 +547,8 @@ private void loadCustomVfs(Properties props) throws ClassNotFoundException {
 }
 ```
 
-Configuration.java
-
 ```java
+// Configuration.java
 public void setVfsImpl(Class<? extends VFS> vfsImpl) {
     if (vfsImpl != null) {
         this.vfsImpl = vfsImpl;
@@ -559,10 +557,10 @@ public void setVfsImpl(Class<? extends VFS> vfsImpl) {
 }
 ```
 
-VFS.java
-
 ```java
-public static final List<Class<? extends VFS>> USER_IMPLEMENTATIONS = new ArrayList<Class<? extends VFS>>();
+// VFS.java
+public static final List<Class<? extends VFS>> USER_IMPLEMENTATIONS = 
+    									new ArrayList<Class<? extends VFS>>();
 public static void addImplClass(Class<? extends VFS> clazz) {
     if (clazz != null) {
         USER_IMPLEMENTATIONS.add(clazz);
@@ -570,13 +568,115 @@ public static void addImplClass(Class<? extends VFS> clazz) {
 }
 ```
 
+在VFS的配置可以指定多个VFS的实现，所有用户自定义的VFS实现都会被放在USER_IMPLEMENTATIONS这个集合里。加载过程仅仅是将类名转为Class对象保存起来。VFS实际上是一个单例，也就是说虽然我们可以传入多个实现，但是最终被使用的只有一个。
 
+```java
+// VFS.java
+public static VFS getInstance() {
+    return VFSHolder.INSTANCE;
+}
+public static final List<Class<? extends VFS>> USER_IMPLEMENTATIONS = 
+    								new ArrayList<Class<? extends VFS>>();
+public static final Class<?>[] IMPLEMENTATIONS = { JBoss6VFS.class, DefaultVFS.class };
+private static class VFSHolder {
+    static final VFS INSTANCE = createVFS();
 
+    @SuppressWarnings("unchecked")
+    static VFS createVFS() {
+        // Try the user implementations first, then the built-ins
+        List<Class<? extends VFS>> impls = new ArrayList<Class<? extends VFS>>();
 
+        // 优先加载用户自定义的VFS实现。
+        impls.addAll(USER_IMPLEMENTATIONS);
+        // 内置的VFS实现有两个，一个是JBoos6，一个是DefaultVFS
+        impls.addAll(Arrays.asList((Class<? extends VFS>[]) IMPLEMENTATIONS));
+
+        // Try each implementation class until a valid one is found
+        VFS vfs = null;
+        for (int i = 0; vfs == null || !vfs.isValid(); i++) {
+            Class<? extends VFS> impl = impls.get(i);
+            try {
+                vfs = impl.newInstance();
+                if (vfs == null || !vfs.isValid()) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("VFS implementation " + impl.getName() +
+                                  " is not valid in this environment.");
+                    }
+                }
+            } catch (InstantiationException e) {
+                log.error("Failed to instantiate " + impl, e);
+                return null;
+            } catch (IllegalAccessException e) {
+                log.error("Failed to instantiate " + impl, e);
+                return null;
+            }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("Using VFS adapter " + vfs.getClass().getName());
+        }
+        return vfs;
+    }
+}
+```
+
+内置实现中优先级较高的是JBoss6，但是JBoss6需要依赖JBoss模块，所以在初始化的时候会对其进行验证，即系统中如果没有JBoss模块，JBoss6VFS就被设置为非法。所以在默认的情况下，Mybatis会使用DefaultVFS作为虚拟文件系统的实现。
+
+```java
+public class JBoss6VFS extends VFS {
+    static {
+        initialize();
+    }
+    protected static synchronized void initialize() {
+        if (valid == null) {
+            // Assume valid. It will get flipped later if something goes wrong.
+            valid = Boolean.TRUE;
+
+            // Look up and verify required classes
+            VFS.VFS = checkNotNull(getClass("org.jboss.vfs.VFS"));
+            VirtualFile.VirtualFile = checkNotNull(getClass("org.jboss.vfs.VirtualFile"));
+
+            // Look up and verify required methods
+            VFS.getChild = checkNotNull(getMethod(VFS.VFS, "getChild", URL.class));
+            VirtualFile.getChildrenRecursively = checkNotNull(getMethod(VirtualFile.VirtualFile,
+                                                                        "getChildrenRecursively"));
+            VirtualFile.getPathNameRelativeTo = checkNotNull(getMethod(VirtualFile.VirtualFile,
+                                                                       "getPathNameRelativeTo", VirtualFile.VirtualFile));
+
+            // Verify that the API has not changed
+            checkReturnType(VFS.getChild, VirtualFile.VirtualFile);
+            checkReturnType(VirtualFile.getChildrenRecursively, List.class);
+            checkReturnType(VirtualFile.getPathNameRelativeTo, String.class);
+        }
+    }
+}
+```
+
+VFS本身是一个抽象类，提供了一些方法的实现，但是这些方法都是挺简单的方法，我们需要关注的是两个list方法。
+
+<div align="center"><img width="40%" src="image/2020-09-08_185233.jpg" /></div>
+
+```java
+// VFS.java
+protected abstract List<String> list(URL url, String forPath) throws IOException;
+
+public List<String> list(String path) throws IOException {
+    List<String> names = new ArrayList<String>();
+    for (URL url : getResources(path)) {
+        names.addAll(list(url, path));
+    }
+    return names;
+}
+protected static List<URL> getResources(String path) throws IOException {
+    return Collections.list(Thread.currentThread().getContextClassLoader().getResources(path));
+}
+```
+
+VFS里只会得到文件的URL对象，真正的解析被委托给了子类。`list(URL url, String forPath)` 方法在下一个标签的解析中就会被使用，所以本小节先跳过这一部分。下一小节结合具体案例再看。
 
 ### typeAliasesElement
 
 ```java
+// XMLConfigBuilder.java
 protected final Configuration configuration;
 private void typeAliasesElement(XNode parent) {
     if (parent != null) {
@@ -584,7 +684,9 @@ private void typeAliasesElement(XNode parent) {
             if ("package".equals(child.getName())) {
                 String typeAliasPackage = child.getStringAttribute("name");
                 configuration.getTypeAliasRegistry().registerAliases(typeAliasPackage);
-            } else {
+            } 
+            // 单个加载的逻辑是非常简单的，我们就不在看了。
+            else {
                 String alias = child.getStringAttribute("alias");
                 String type = child.getStringAttribute("type");
                 try {
@@ -595,18 +697,28 @@ private void typeAliasesElement(XNode parent) {
                         typeAliasRegistry.registerAlias(alias, clazz);
                     }
                 } catch (ClassNotFoundException e) {
-                    throw new BuilderException("Error registering typeAlias for '" + alias + "'. Cause: " + e, e);
+                    throw new BuilderException("Error registering typeAlias for '" 
+                                               + alias + "'. Cause: " + e, e);
                 }
             }
         }
     }
 }
+```
+
+```java
+// Configuration.java
 public TypeAliasRegistry getTypeAliasRegistry() {
     return typeAliasRegistry;
 }
+```
+
+```java
+// TypeAliasRegistry.java
 public void registerAliases(String packageName){
     registerAliases(packageName, Object.class);
 }
+// 从包名获得Class对象
 public void registerAliases(String packageName, Class<?> superType){
     ResolverUtil<Class<?>> resolverUtil = new ResolverUtil<Class<?>>();
     resolverUtil.find(new ResolverUtil.IsA(superType), packageName);
@@ -619,21 +731,431 @@ public void registerAliases(String packageName, Class<?> superType){
         }
     }
 }
+public void registerAlias(Class<?> type) {
+    String alias = type.getSimpleName();
+    Alias aliasAnnotation = type.getAnnotation(Alias.class);
+    if (aliasAnnotation != null) {
+        alias = aliasAnnotation.value();
+    } 
+    registerAlias(alias, type);
+}
+public void registerAlias(String alias, Class<?> value) {
+    if (alias == null) {
+        throw new TypeException("The parameter alias cannot be null");
+    }
+    // issue #748
+    String key = alias.toLowerCase(Locale.ENGLISH);
+    if (TYPE_ALIASES.containsKey(key) && TYPE_ALIASES.get(key) != null && !TYPE_ALIASES.get(key).equals(value)) {
+        throw new TypeException("The alias '" + alias + "' is already mapped to the value '" 
+                                + TYPE_ALIASES.get(key).getName() + "'.");
+    }
+    TYPE_ALIASES.put(key, value);
+}
+```
+
+TypeAliasRegistry里的这一段代码，最重要的是 `registerAliases()` 方法，解释它之前需要看两个Demo。
+
+
+
+#### ResolverUtil
+
+分解器的目的是为了将查找指定的类，这个指定的条件有两类：某个包下和某个注解标识。
+
+```java
+public class TestResolverUtil {
+    public static void main(String[] args) {
+        ResolverUtil<Class<?>> resolverUtil = new ResolverUtil<>();
+        ResolverUtil.IsA isA = new ResolverUtil.IsA(Object.class);
+//        ResolverUtil.IsA annotatedWith = new ResolverUtil.AnnotatedWith(Annotated.class);
+        resolverUtil.find(isA, "jishuneimu");
+        Set<Class<? extends Class<?>>> classes = resolverUtil.getClasses();
+        for (Class<?> c : classes) {
+            System.out.println(c);
+        }
+    }
+}
+```
+
+Test类是ResolverUtil的内部类，它的功能就是验证一个Class对象是不是符合要求。
+
+```java
+// ResolverUtil.java
+public interface Test {
+    /**
+     * Will be called repeatedly with candidate classes. Must return True if a class
+     * is to be included in the results, false otherwise.
+     */
+    boolean matches(Class<?> type);
+}
+
+public static class AnnotatedWith implements Test {
+    private Class<? extends Annotation> annotation;
+    /** Constructs an AnnotatedWith test for the specified annotation type. */
+    public AnnotatedWith(Class<? extends Annotation> annotation) {
+        this.annotation = annotation;
+    }
+    /** Returns true if the type is annotated with the class provided to the constructor. */
+    @Override
+    public boolean matches(Class<?> type) {
+        return type != null && type.isAnnotationPresent(annotation);
+    }
+    @Override
+    public String toString() {
+        return "annotated with @" + annotation.getSimpleName();
+    }
+}
+
+public static class IsA implements Test {
+    private Class<?> parent;
+    /** Constructs an IsA test using the supplied Class as the parent class/interface. */
+    public IsA(Class<?> parentType) {
+        this.parent = parentType;
+    }
+    /** Returns true if type is assignable to the parent type supplied in the constructor. */
+    @Override
+    public boolean matches(Class<?> type) {
+        return type != null && parent.isAssignableFrom(type);
+    }
+    @Override
+    public String toString() {
+        return "is assignable to " + parent.getSimpleName();
+    }
+}
+```
+
+find() 方法就是查找方法，参数很简单，就是一个 `Test` 对象，一个包名。
+
+```java
+public ResolverUtil<T> find(Test test, String packageName) {
+    // 将包名表示转为路径表示
+    String path = getPackagePath(packageName);
+    try {
+        // 这里就是上一小节提到的虚拟文件系统
+        List<String> children = VFS.getInstance().list(path);
+        for (String child : children) {
+            if (child.endsWith(".class")) {
+                addIfMatching(test, child);
+            }
+        }
+    } catch (IOException ioe) {
+        log.error("Could not read package: " + packageName, ioe);
+    }
+
+    return this;
+}
+protected String getPackagePath(String packageName) {
+    return packageName == null ? null : packageName.replace('.', '/');
+}
+protected void addIfMatching(Test test, String fqn) {
+    try {
+        // 把 .class 文件截取掉，再将路径名分隔符替换为.
+        String externalName = fqn.substring(0, fqn.indexOf('.')).replace('/', '.');
+        ClassLoader loader = getClassLoader();
+        if (log.isDebugEnabled()) {
+            log.debug("Checking to see if class " + externalName + " matches criteria [" + test + "]");
+        }
+        Class<?> type = loader.loadClass(externalName);
+        if (test.matches(type)) {
+            matches.add((Class<T>) type);
+        }
+    } catch (Throwable t) {
+        log.warn("Could not examine class '" + fqn + "'" + " due to a " +
+                 t.getClass().getName() + " with message: " + t.getMessage());
+    }
+}
+
+// ClassLoader是可以设置的 public void setClassLoader(ClassLoader classloader)，如果没有设置
+// 就使用线程上下文类加载器
+public ClassLoader getClassLoader() {
+    return classloader == null ? Thread.currentThread().getContextClassLoader() : classloader;
+}
+```
+
+所以我们接下来的重点就是来看 `list(URL url, String path)` 方法。
+
+```java
+// VFS.java
+public List<String> list(URL url, String path) throws IOException {
+    InputStream is = null;
+    try {
+        List<String> resources = new ArrayList<String>();
+
+        // First, try to find the URL of a JAR file containing the requested resource. If a JAR
+        // file is found, then we'll list child resources by reading the JAR.
+        // 这个地方是为了判断这个url是不是jar包，具体逻辑比较复杂，我们就不看了
+        URL jarUrl = findJarForResource(url);
+        if (jarUrl != null) {
+            // 如果是jar包，就从jar包里读取
+            is = jarUrl.openStream();
+            if (log.isDebugEnabled()) {
+                log.debug("Listing " + url);
+            }
+            // 这个的具体逻辑计较简单
+            resources = listResources(new JarInputStream(is), path);
+        }
+        else {
+            List<String> children = new ArrayList<String>();
+            try {
+                if (isJar(url)) {
+                    // Some versions of JBoss VFS might give a JAR stream even if the resource
+                    // referenced by the URL isn't actually a JAR
+                    // 修改jboss的bug
+                    is = url.openStream();
+                    JarInputStream jarInput = new JarInputStream(is);
+                    if (log.isDebugEnabled()) {
+                        log.debug("Listing " + url);
+                    }
+                    for (JarEntry entry; (entry = jarInput.getNextJarEntry()) != null;) {
+                        if (log.isDebugEnabled()) {
+                            log.debug("Jar entry: " + entry.getName());
+                        }
+                        children.add(entry.getName());
+                    }
+                    jarInput.close();
+                }
+                else {
+                    /*
+             		 * Some servlet containers allow reading from directory resources like a
+             		 * text file, listing the child resources one per line. However, there is no
+             		 * way to differentiate between directory and file resources just by reading
+             		 * them. To work around that, as each line is read, try to look it up via
+             		 * the class loader as a child of the current resource. If any line fails
+             		 * then we assume the current resource is not a directory.
+             		*/
+                    // 有可能这个url是一个文本文件，此时按行读取，假设每一行都是一个资源，如果有任意一行找不到
+                    // 就返回空集合
+                    is = url.openStream();
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(is));
+                    List<String> lines = new ArrayList<String>();
+                    for (String line; (line = reader.readLine()) != null;) {
+                        if (log.isDebugEnabled()) {
+                            log.debug("Reader entry: " + line);
+                        }
+                        lines.add(line);
+                        if (getResources(path + "/" + line).isEmpty()) {
+                            lines.clear();
+                            break;
+                        }
+                    }
+                    if (!lines.isEmpty()) {
+                        if (log.isDebugEnabled()) {
+                            log.debug("Listing " + url);
+                        }
+                        children.addAll(lines);
+                    }
+                }
+            } catch (FileNotFoundException e) {
+                /*
+           		 * For file URLs the openStream() call might fail, depending on the servlet
+           		 * container, because directories can't be opened for reading. If that happens,
+           		 * then list the directory directly instead.
+           		*/
+                // 如果是一个文件夹，就将文件夹里的文件都加入
+                if ("file".equals(url.getProtocol())) {
+                    File file = new File(url.getFile());
+                    if (log.isDebugEnabled()) {
+                        log.debug("Listing directory " + file.getAbsolutePath());
+                    }
+                    if (file.isDirectory()) {
+                        if (log.isDebugEnabled()) {
+                            log.debug("Listing " + url);
+                        }
+                        children = Arrays.asList(file.list());
+                    }
+                }
+                else {
+                    // No idea where the exception came from so rethrow it
+                    throw e;
+                }
+            }
+
+            // The URL prefix to use when recursively listing child resources
+            String prefix = url.toExternalForm();
+            if (!prefix.endsWith("/")) {
+                prefix = prefix + "/";
+            }
+
+            // Iterate over immediate children, adding files and recursing into directories
+            // 递归调用，直至children为空集合
+            for (String child : children) {
+                String resourcePath = path + "/" + child;
+                resources.add(resourcePath);
+                URL childUrl = new URL(prefix + child);
+                resources.addAll(list(childUrl, resourcePath));
+            }
+        }
+
+        return resources;
+    } finally {
+        if (is != null) {
+            try {
+                is.close();
+            } catch (Exception e) {
+                // Ignore
+            }
+        }
+    }
+}
+
+protected List<String> listResources(JarInputStream jar, String path) throws IOException {
+    // Include the leading and trailing slash when matching names
+    if (!path.startsWith("/")) {
+        path = "/" + path;
+    }
+    if (!path.endsWith("/")) {
+        path = path + "/";
+    }
+
+    // Iterate over the entries and collect those that begin with the requested path
+    List<String> resources = new ArrayList<String>();
+    for (JarEntry entry; (entry = jar.getNextJarEntry()) != null;) {
+        if (!entry.isDirectory()) {
+            // Add leading slash if it's missing
+            String name = entry.getName();
+            if (!name.startsWith("/")) {
+                name = "/" + name;
+            }
+
+            // Check file name
+            if (name.startsWith(path)) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Found resource: " + name);
+               }
+                // Trim leading slash
+                resources.add(name.substring(1));
+            }
+        }
+    }
+    return resources;
+}
+```
+
+看完这一段代码，我们就知道下面这个注册别名全部的运行逻辑了。
+
+```java
+// TypeAliasRegistry.java
+public void registerAliases(String packageName){
+    registerAliases(packageName, Object.class);
+}
+// 从包名获得Class对象
+public void registerAliases(String packageName, Class<?> superType){
+    ResolverUtil<Class<?>> resolverUtil = new ResolverUtil<Class<?>>();
+    resolverUtil.find(new ResolverUtil.IsA(superType), packageName);
+    Set<Class<? extends Class<?>>> typeSet = resolverUtil.getClasses();
+    for(Class<?> type : typeSet){
+        // Ignore inner classes and interfaces (including package-info.java)
+        // Skip also inner classes. See issue #6
+        if (!type.isAnonymousClass() && !type.isInterface() && !type.isMemberClass()) {
+            registerAlias(type);
+        }
+    }
+}
+public void registerAlias(Class<?> type) {
+    String alias = type.getSimpleName();
+    Alias aliasAnnotation = type.getAnnotation(Alias.class);
+    if (aliasAnnotation != null) {
+        alias = aliasAnnotation.value();
+    } 
+    registerAlias(alias, type);
+}
+public void registerAlias(String alias, Class<?> value) {
+    if (alias == null) {
+        throw new TypeException("The parameter alias cannot be null");
+    }
+    // issue #748
+    String key = alias.toLowerCase(Locale.ENGLISH);
+    if (TYPE_ALIASES.containsKey(key) && TYPE_ALIASES.get(key) != null && !TYPE_ALIASES.get(key).equals(value)) {
+        throw new TypeException("The alias '" + alias + "' is already mapped to the value '" 
+                                + TYPE_ALIASES.get(key).getName() + "'.");
+    }
+    TYPE_ALIASES.put(key, value);
+}
 ```
 
 
 
+### pluginElement
 
+```java
+// XMLConfigBuilder.java
+private void pluginElement(XNode parent) throws Exception {
+    if (parent != null) {
+        for (XNode child : parent.getChildren()) {
+            String interceptor = child.getStringAttribute("interceptor");
+            Properties properties = child.getChildrenAsProperties();
+            Interceptor interceptorInstance = (Interceptor) resolveClass(interceptor).newInstance();
+            interceptorInstance.setProperties(properties);
+            configuration.addInterceptor(interceptorInstance);
+        }
+    }
+}
+```
 
+```java
+// BaseBuilder.java
+protected Class<?> resolveClass(String alias) {
+    if (alias == null) {
+        return null;
+    }
+    try {
+        return resolveAlias(alias);
+    } catch (Exception e) {
+        throw new BuilderException("Error resolving class. Cause: " + e, e);
+    }
+}
+protected Class<?> resolveAlias(String alias) {
+    return typeAliasRegistry.resolveAlias(alias);
+}
+```
 
+```java
+// TypeAliasRegistry.java
+public <T> Class<T> resolveAlias(String string) {
+    try {
+        if (string == null) {
+            return null;
+        }
+        // issue #748
+        String key = string.toLowerCase(Locale.ENGLISH);
+        Class<T> value;
+        if (TYPE_ALIASES.containsKey(key)) {
+            value = (Class<T>) TYPE_ALIASES.get(key);
+        } else {
+            value = (Class<T>) Resources.classForName(string);
+        }
+        return value;
+    } catch (ClassNotFoundException e) {
+        throw new TypeException("Could not resolve type alias '" + string + "'.  Cause: " + e, e);
+    }
+}
+```
 
+```java
+// Configuration.java
+protected final InterceptorChain interceptorChain = new InterceptorChain();
+public void addInterceptor(Interceptor interceptor) {
+    interceptorChain.addInterceptor(interceptor);
+}
+```
 
+```java
+// InterceptorChain.java
+public class InterceptorChain {
+    // 由于这里是一个数组，所以插件的执行顺序就是配置的顺序
+    private final List<Interceptor> interceptors = new ArrayList<Interceptor>();
+    public Object pluginAll(Object target) {
+        for (Interceptor interceptor : interceptors) {
+            target = interceptor.plugin(target);
+        }
+        return target;
+    }
+    public void addInterceptor(Interceptor interceptor) {
+        interceptors.add(interceptor);
+    }
+    public List<Interceptor> getInterceptors() {
+        return Collections.unmodifiableList(interceptors);
+    }
+}
+```
 
-
-
-
-
-
-
-
-
+插件的加载很简单，不再多说，关于插件的执行放在后面单独说。
