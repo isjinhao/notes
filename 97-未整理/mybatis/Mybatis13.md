@@ -1067,11 +1067,13 @@ public int update(MappedStatement ms, Object parameter) throws SQLException {
 }
 ```
 
+一级缓存会存在脏数据问题。https://tech.meituan.com/2018/01/19/mybatis-cache.html。
+
 
 
 ### 二级缓存
 
-一级缓存是强制开启的，但是二级缓存却是可以配置的，默认就是开启的，如果想关闭，可以通过配置mybatis-config.xml实现。一级缓存针对SqlSession，二级缓存针对namespace。
+一级缓存是强制开启的，但是二级缓存却是可以配置的，默认就是开启的，如果想关闭，可以通过配置mybatis-config.xml实现。一级缓存针对SqlSession，二级缓存针对namespace。二级缓存必须提交才能生效。
 
 ```xml
 <settings>
@@ -1114,7 +1116,8 @@ private void cacheElement(XNode context) {
         boolean readWrite = !context.getBooleanAttribute("readOnly", false);
         boolean blocking = context.getBooleanAttribute("blocking", false);
         Properties props = context.getChildrenAsProperties();
-        builderAssistant.useNewCache(typeClass, evictionClass, flushInterval, size, readWrite, blocking, props);
+        builderAssistant.useNewCache(typeClass, 
+                                     evictionClass, flushInterval, size, readWrite, blocking, props);
     }
 }
 ```
@@ -1125,7 +1128,7 @@ private void cacheElement(XNode context) {
 // CachingExecutor.java
 private final TransactionalCacheManager tcm = new TransactionalCacheManager();
 public <E> List<E> query(MappedStatement ms, Object parameterObject, RowBounds rowBounds, 
-                         ResultHandler resultHandler, CacheKey key, BoundSql boundSql) throws SQLException {
+    	ResultHandler resultHandler, CacheKey key, BoundSql boundSql) throws SQLException {
     Cache cache = ms.getCache();
     if (cache != null) {
         flushCacheIfRequired(ms);
@@ -1138,7 +1141,6 @@ public <E> List<E> query(MappedStatement ms, Object parameterObject, RowBounds r
             List<E> list = (List<E>) tcm.getObject(cache, key);
             if (list == null) {
                 // 一级缓存
-                list = delegate.query(ms, parameterObject, rowBounds, resultHandler, key, boundSql);
                 // 放数据进入二级缓存
                 tcm.putObject(cache, key, list); // issue #578 and #116
             }
@@ -1182,12 +1184,15 @@ public class TransactionalCacheManager {
         }
     }
     private TransactionalCache getTransactionalCache(Cache cache) {
-        return transactionalCaches.computeIfAbsent(cache, TransactionalCache::new);
+        TransactionalCache txCache = transactionalCaches.get(cache);
+        if (txCache == null) {
+            txCache = new TransactionalCache(cache);
+            transactionalCaches.put(cache, txCache);
+        }
+        return txCache;
     }
 }
 ```
-
-
 
 ```java
 public class TransactionalCache implements Cache {
@@ -1210,7 +1215,6 @@ public class TransactionalCache implements Cache {
     public int getSize() {
         return delegate.getSize();
     }
-
     @Override
     public Object getObject(Object key) {
         Object object = delegate.getObject(key);
@@ -1223,23 +1227,19 @@ public class TransactionalCache implements Cache {
             return object;
         }
     }
-
     @Override
     public void putObject(Object key, Object object) {
         entriesToAddOnCommit.put(key, object);
     }
-
     @Override
     public Object removeObject(Object key) {
         return null;
     }
-
     @Override
     public void clear() {
         clearOnCommit = true;
         entriesToAddOnCommit.clear();
     }
-
     public void commit() {
         if (clearOnCommit) {
             delegate.clear();
@@ -1247,18 +1247,15 @@ public class TransactionalCache implements Cache {
         flushPendingEntries();
         reset();
     }
-
     public void rollback() {
         unlockMissedEntries();
         reset();
     }
-
     private void reset() {
         clearOnCommit = false;
         entriesToAddOnCommit.clear();
         entriesMissedInCache.clear();
     }
-
     private void flushPendingEntries() {
         for (Map.Entry<Object, Object> entry : entriesToAddOnCommit.entrySet()) {
             delegate.putObject(entry.getKey(), entry.getValue());
@@ -1269,7 +1266,6 @@ public class TransactionalCache implements Cache {
             }
         }
     }
-
     private void unlockMissedEntries() {
         for (Object entry : entriesMissedInCache) {
             try {
@@ -1280,36 +1276,166 @@ public class TransactionalCache implements Cache {
             }
         }
     }
-
 }
-
 ```
 
+每一个CachingExecutor都有一个TransactionalCacheManager，每个TransactionalCacheManager都有一个Map<Cache，TransactionalCache>，TransactionalCache是一个Cache装饰器，被装饰的就是Cache。这个Cache，就是Mapper文件里配置的那个，可能是引用的其他Mapper的，也可能是新的。
 
+getObejct()的执行流程。
 
+```java
+// CachingExecutor.java
+public <E> List<E> query(MappedStatement ms, Object parameterObject, RowBounds rowBounds, 
+    	ResultHandler resultHandler, CacheKey key, BoundSql boundSql) throws SQLException {
+    Cache cache = ms.getCache();
+    if (cache != null) {
+        flushCacheIfRequired(ms);
+        if (ms.isUseCache() && resultHandler == null) {
+            ensureNoOutParams(ms, boundSql);
+            @SuppressWarnings("unchecked")
+            List<E> list = (List<E>) tcm.getObject(cache, key);
+            if (list == null) {
+                list = delegate.<E> query(ms, parameterObject, rowBounds, resultHandler, key, boundSql);
+                tcm.putObject(cache, key, list); // issue #578 and #116
+            }
+            return list;
+        }
+    }
+    return delegate.<E> query(ms, parameterObject, rowBounds, resultHandler, key, boundSql);
+}
+```
 
+```java
+// TransactionalCacheManager.java
+public Object getObject(Cache cache, CacheKey key) {
+    return getTransactionalCache(cache).getObject(key);
+}
+private TransactionalCache getTransactionalCache(Cache cache) {
+    TransactionalCache txCache = transactionalCaches.get(cache);
+    if (txCache == null) {
+        txCache = new TransactionalCache(cache);
+        transactionalCaches.put(cache, txCache);
+    }
+    return txCache;
+}
+```
 
+```java
+// TransactionalCache.java
+public Object getObject(Object key) {
+    // delegate就是TransactionalCacheManager里Map的key，也就是Mapper文件里配置的那个
+    Object object = delegate.getObject(key);
+    if (object == null) {
+        entriesMissedInCache.add(key);
+    }
+    // issue #146
+    if (clearOnCommit) {
+        return null;
+    } else {
+        return object;
+    }
+}
+```
 
+putObject()的执行流程。
 
+```java
+// TransactionalCache.java
+private final Map<Object, Object> entriesToAddOnCommit;
+public void putObject(Cache cache, CacheKey key, Object value) {
+    getTransactionalCache(cache).putObject(key, value);
+}
+public void putObject(Object key, Object object) {
+    entriesToAddOnCommit.put(key, object);
+}
+```
 
+提交的执行流程。
 
+```java
+// CachingExecutor.java
+public void commit(boolean required) throws SQLException {
+    delegate.commit(required);
+    tcm.commit();
+}
+```
 
+```java
+// TransactionalCacheManager.java
+public void commit() {
+    for (TransactionalCache txCache : transactionalCaches.values()) {
+        txCache.commit();
+    }
+}
+```
 
+```java
+// TransactionalCache.java
+public void commit() {
+    if (clearOnCommit) {
+        delegate.clear();
+    }
+    flushPendingEntries();
+    reset();
+}
+private void flushPendingEntries() {
+    for (Map.Entry<Object, Object> entry : entriesToAddOnCommit.entrySet()) {
+        delegate.putObject(entry.getKey(), entry.getValue());
+    }
+    for (Object entry : entriesMissedInCache) {
+        if (!entriesToAddOnCommit.containsKey(entry)) {
+            delegate.putObject(entry, null);
+        }
+    }
+}
+```
 
+当两个线程的SqlSession同时进行操作的时候，不会产生并发问题，因为Mybatis对Cache进行了一层封装。
 
+```java
+public class SynchronizedCache implements Cache {
+    private final Cache delegate;
+    public SynchronizedCache(Cache delegate) {
+        this.delegate = delegate;
+    }
+    @Override
+    public String getId() {
+        return delegate.getId();
+    }
+    @Override
+    public synchronized int getSize() {
+        return delegate.getSize();
+    }
+    @Override
+    public synchronized void putObject(Object key, Object object) {
+        delegate.putObject(key, object);
+    }
+    @Override
+    public synchronized Object getObject(Object key) {
+        return delegate.getObject(key);
+    }
+    @Override
+    public synchronized Object removeObject(Object key) {
+        return delegate.removeObject(key);
+    }
+    @Override
+    public synchronized void clear() {
+        delegate.clear();
+    }
+    @Override
+    public int hashCode() {
+        return delegate.hashCode();
+    }
+    @Override
+    public boolean equals(Object obj) {
+        return delegate.equals(obj);
+    }
+    @Override
+    public ReadWriteLock getReadWriteLock() {
+        return null;
+    }
+}
+```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+二级缓存必须提交才能生效。
 
