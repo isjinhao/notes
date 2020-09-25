@@ -447,9 +447,30 @@ private boolean databaseIdMatchesCurrent(String id, String databaseId, String re
 
 
 
+### Configuration
+
+Configuration是一个rich类。
+
+```
+  protected final Map<String, MappedStatement> mappedStatements = new StrictMap<MappedStatement>("Mapped Statements collection")
+      .conflictMessageProducer((savedValue, targetValue) ->
+          ". please check " + savedValue.getResource() + " and " + targetValue.getResource());
+  protected final Map<String, Cache> caches = new StrictMap<>("Caches collection");
+  protected final Map<String, ResultMap> resultMaps = new StrictMap<>("Result Maps collection");
+  protected final Map<String, ParameterMap> parameterMaps = new StrictMap<>("Parameter Maps collection");
+  protected final Map<String, KeyGenerator> keyGenerators = new StrictMap<>("Key Generators collection");
+
+  protected final Set<String> loadedResources = new HashSet<>();
+  protected final Map<String, XNode> sqlFragments = new StrictMap<>("XML fragments parsed from previous mappers");
+```
+
+
+
+
+
 ### resultMapElements
 
-下面以一个案例debug对这个标签的解释。这个案例包含了一对一查询和一对多查询。
+下面以几个常用的案例debug对这个标签的解释。这些案例也会用在解析CURD语句和封装结果集等中。
 
 ```java
 public class Student {
@@ -507,26 +528,50 @@ StudentMapper.xml
   "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
 <mapper namespace="demo.StudentMapper" >
-  <cache type="PERPETUAL" eviction="LRU" flushInterval="120000" readOnly="true" size="1024"></cache>
-  <resultMap id="fullResult" type="pojo.FullStudent" extends="demo.StudentMapper.basicResult">
-    <association resultMap="demo.HouseMapper.basicResult" property="house" />
-    <collection property="scoreList" ofType="pojo.Score" resultMap="demo.ScoreMapper.basicResult" />
-  </resultMap>
-  <select id="selectFullStudent" resultMap="fullResult" databaseId="mysql">
-    select
-      STUDENT.SNO SNO,
-      STUDENT.SNAME SNAME,
-      STUDENT.SSEX SSEX,
-      STUDENT.SBIRTHDAY SBIRTHDAY,
-      STUDENT.CLASS CLASS,
-      SCORE.CNO CNO,
-      SCORE.DEGREE DEGREE,
-      HOUSE.HOUSE_ID HOUSE_ID,
-      HOUSE.HOUSE_HOLDER HOUSE_HOLDER,
-      HOUSE.HOUSE_MEMBER HOUSE_MEMBER
-    from STUDENT, SCORE, HOUSE where STUDENT.SNO = SCORE.SNO and HOUSE.HOUSE_MEMBER = STUDENT.SNO;
-  </select>
+
+    <cache type="PERPETUAL" eviction="LRU" flushInterval="120000" readOnly="true" size="1024"></cache>
+
+    <resultMap id="fullResult" type="pojo.FullStudent" extends="demo.StudentMapper.basicResult">
+        <association resultMap="demo.HouseMapper.basicResult" property="house" />
+        <collection property="scoreList" ofType="pojo.Score" resultMap="demo.ScoreMapper.basicResult" />
+    </resultMap>
+    <resultMap id="basicResult" type="pojo.Student">
+        <id column="SNO" property="sno" jdbcType="VARCHAR"></id>
+        <result column="CLASS" jdbcType="VARCHAR" property="clazz"></result>
+    </resultMap>
+
+    <sql id="columns">
+        STUDENT.SNO SNO,
+        STUDENT.SNAME SNAME,
+        STUDENT.SSEX SSEX,
+        STUDENT.SBIRTHDAY SBIRTHDAY,
+        STUDENT.CLASS CLASS,
+        SCORE.CNO CNO,
+        SCORE.DEGREE DEGREE,
+        HOUSE.HOUSE_ID HOUSE_ID,
+        HOUSE.HOUSE_HOLDER HOUSE_HOLDER,
+        HOUSE.HOUSE_MEMBER HOUSE_MEMBER
+    </sql>
+
+    <select id="selectFullStudent" resultMap="fullResult" databaseId="mysql">
+        select <include refid="columns"></include> from STUDENT, SCORE, HOUSE 
+        where STUDENT.SNO = SCORE.SNO and HOUSE.HOUSE_MEMBER = STUDENT.SNO and STUDENT.SSEX = #{sex};
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="ID"  databaseId="mysql">
+        <!-- select * from STUDENT  -->
+        insert into STUDENT(SNO, SNAME, SSEX, SBIRTHDAY, CLASS) values (#{sno}, #{sname}, #{ssex}, #{sbirthday}, #{clazz})
+    </insert>
 </mapper>
+```
+
+StudentMapper.java
+
+```java
+public interface StudentMapper {
+    Integer insert(Student student);
+    List<FullStudent> selectFullStudent(@Param("sex") String sex);
+}
 ```
 
 
@@ -542,7 +587,7 @@ private void resultMapElements(List<XNode> list) {
             // ignore, it will be retried
         }
     }
-}S
+}
 private ResultMap resultMapElement(XNode resultMapNode) {
     return resultMapElement(resultMapNode, Collections.emptyList(), null);
 }
