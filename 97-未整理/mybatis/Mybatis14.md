@@ -275,6 +275,36 @@ public MappedStatement addMappedStatement(String id, SqlSource sqlSource, Statem
 
 
 
+### 解析失败的处理
+
+在解析Mapper时，可能无法解析当前的标签，比如在没有cache标签之前就解析对应的cache-ref标签。没有解析完成的标签会放incompleteXxx集合中。在使用xml文件作为配置文件时，会使用到三个未完成集合。incompleteMethods是注解配置时会用到的未完成集合。
+
+```java
+protected final Collection<XMLStatementBuilder> incompleteStatements = new LinkedList<>();
+protected final Collection<CacheRefResolver> incompleteCacheRefs = new LinkedList<>();
+protected final Collection<ResultMapResolver> incompleteResultMaps = new LinkedList<>();
+protected final Collection<MethodResolver> incompleteMethods = new LinkedList<>();
+```
+
+Mapper解析完成之后会尝试解析所有的未完成集合里的数据。由此完成对全部Mapper的解析。
+
+```java
+// XMLMapperBuilder.java
+public void parse() {
+    if (!configuration.isResourceLoaded(resource)) {
+        configurationElement(parser.evalNode("/mapper"));
+        configuration.addLoadedResource(resource);
+        bindMapperForNamespace();
+    }
+
+    parsePendingResultMaps();
+    parsePendingCacheRefs();
+    parsePendingStatements();
+}
+```
+
+
+
 ### cacheElement
 
 ```java
@@ -449,22 +479,22 @@ private boolean databaseIdMatchesCurrent(String id, String databaseId, String re
 
 ### Configuration
 
-Configuration是一个rich类。
+Configuration是一个rich类。整个Mybatis所有的配置都被放在这个类中，比如之前说到的cache和sql。
 
-```
-  protected final Map<String, MappedStatement> mappedStatements = new StrictMap<MappedStatement>("Mapped Statements collection")
-      .conflictMessageProducer((savedValue, targetValue) ->
+```java
+protected final Map<String, MappedStatement> mappedStatements = 
+    new StrictMap<MappedStatement>("Mapped Statements collection")
+    .conflictMessageProducer((savedValue, targetValue) ->
           ". please check " + savedValue.getResource() + " and " + targetValue.getResource());
-  protected final Map<String, Cache> caches = new StrictMap<>("Caches collection");
-  protected final Map<String, ResultMap> resultMaps = new StrictMap<>("Result Maps collection");
-  protected final Map<String, ParameterMap> parameterMaps = new StrictMap<>("Parameter Maps collection");
-  protected final Map<String, KeyGenerator> keyGenerators = new StrictMap<>("Key Generators collection");
+protected final Map<String, Cache> caches = new StrictMap<>("Caches collection");
+protected final Map<String, ResultMap> resultMaps = new StrictMap<>("Result Maps collection");
+protected final Map<String, ParameterMap> parameterMaps = new StrictMap<>("Parameter Maps collection");
+protected final Map<String, KeyGenerator> keyGenerators = new StrictMap<>("Key Generators collection");
 
-  protected final Set<String> loadedResources = new HashSet<>();
-  protected final Map<String, XNode> sqlFragments = new StrictMap<>("XML fragments parsed from previous mappers");
+protected final Set<String> loadedResources = new HashSet<>();
+protected final Map<String, XNode> sqlFragments = 
+    new StrictMap<>("XML fragments parsed from previous mappers");
 ```
-
-
 
 
 
@@ -574,9 +604,181 @@ public interface StudentMapper {
 }
 ```
 
+mybatis0-config.xml
+
+```xml
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE configuration
+    PUBLIC "-//mybatis.org//DTD Config 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-config.dtd">
+<configuration>
+    <properties resource="db.properties" />
+    <settings>
+        <!-- 开启二级缓存 -->
+        <setting name="cacheEnabled" value="true"/>
+        <setting name="logImpl" value="STDOUT_LOGGING" />
+        <!-- 开启自动驼峰映射缓存 -->
+        <setting name="mapUnderscoreToCamelCase" value="true"/>
+        <!-- 开启嵌套自动映射 -->
+        <setting name="autoMappingBehavior" value="FULL"/>
+    </settings>
+    <environments default="development">
+        <environment id="development">
+            <transactionManager type="JDBC"/>
+            <dataSource type="POOLED">
+                <property name="driver" value="${db.driver}"/>
+                <property name="url" value="${db.url}"/>
+                <property name="username" value="${db.username}"/>
+                <property name="password" value="${db.password}"/>
+            </dataSource>
+        </environment>
+    </environments>
+    <databaseIdProvider type="demo.MyDatabaseIdProvider">
+        <property name="Oracle" value="oracle"/>
+        <property name="MySQL" value="mysql"/>
+    </databaseIdProvider>
+    <mappers>
+        <mapper resource="demo\HouseMapper.xml"/>
+        <mapper resource="demo\ScoreMapper.xml"/>
+        <mapper resource="demo\StudentMapper.xml"/>
+    </mappers>
+</configuration>
+```
+
+按照上述的配置，没有incompleteXxx集合，这样方便分析。
+
+```java
+// XMLConfigBuilder.java
+private void mapperElement(XNode parent) throws Exception {
+    if (parent != null) {
+        for (XNode child : parent.getChildren()) {
+            if ("package".equals(child.getName())) {
+                String mapperPackage = child.getStringAttribute("name");
+                configuration.addMappers(mapperPackage);
+            } else {
+                String resource = child.getStringAttribute("resource");
+                String url = child.getStringAttribute("url");
+                String mapperClass = child.getStringAttribute("class");
+                // 此时从这里进来
+                if (resource != null && url == null && mapperClass == null) {
+                    ErrorContext.instance().resource(resource);
+                    InputStream inputStream = Resources.getResourceAsStream(resource);
+                    XMLMapperBuilder mapperParser = 
+                        new XMLMapperBuilder(inputStream, configuration, resource, 
+                                             configuration.getSqlFragments());
+                    mapperParser.parse();
+                } else if (resource == null && url != null && mapperClass == null) {
+                    ErrorContext.instance().resource(url);
+                    InputStream inputStream = Resources.getUrlAsStream(url);
+                    XMLMapperBuilder mapperParser = 
+                        new XMLMapperBuilder(inputStream, configuration, url, 
+                                             configuration.getSqlFragments());
+                    mapperParser.parse();
+                } else if (resource == null && url == null && mapperClass != null) {
+                    Class<?> mapperInterface = Resources.classForName(mapperClass);
+                    configuration.addMapper(mapperInterface);
+                } else {
+                    throw new BuilderException("...");
+                }
+            }
+        }
+    }
+}
+```
 
 
 
+```java
+// XMLMapperBuilder.java
+public void parse() {
+    if (!configuration.isResourceLoaded(resource)) {
+        configurationElement(parser.evalNode("/mapper"));
+        configuration.addLoadedResource(resource);
+        bindMapperForNamespace();
+    }
+
+    parsePendingResultMaps();
+    parsePendingCacheRefs();
+    parsePendingStatements();
+}
+private void configurationElement(XNode context) {
+    try {
+        String namespace = context.getStringAttribute("namespace");
+        if (namespace == null || namespace.isEmpty()) {
+            throw new BuilderException("Mapper's namespace cannot be empty");
+        }
+        builderAssistant.setCurrentNamespace(namespace);
+        cacheRefElement(context.evalNode("cache-ref"));
+        cacheElement(context.evalNode("cache"));
+        parameterMapElement(context.evalNodes("/mapper/parameterMap"));
+        // 这里是我们分析的核心
+        resultMapElements(context.evalNodes("/mapper/resultMap"));
+        sqlElement(context.evalNodes("/mapper/sql"));
+        buildStatementFromContext(context.evalNodes("select|insert|update|delete"));
+    } catch (Exception e) {
+        throw new BuilderException("Error parsing Mapper XML. The XML location is '" + resource + "'. Cause: " + e, e);
+    }
+}
+```
+
+#### 保存resultMap的数据结构
+
+每个Result都是
+
+```java
+public class ResultMap {
+    private Configuration configuration;
+
+    private String id;
+    private Class<?> type;
+    private List<ResultMapping> resultMappings;
+    private List<ResultMapping> idResultMappings;
+    private List<ResultMapping> constructorResultMappings;
+    private List<ResultMapping> propertyResultMappings;
+    private Set<String> mappedColumns;
+    private Set<String> mappedProperties;
+    private Discriminator discriminator;
+    private boolean hasNestedResultMaps;
+    private boolean hasNestedQueries;
+    private Boolean autoMapping;
+
+    private ResultMap() {
+    }
+
+}
+```
+
+
+
+```java
+public class ResultMapping {
+
+    private Configuration configuration;
+    private String property;
+    private String column;
+    private Class<?> javaType;
+    private JdbcType jdbcType;
+    private TypeHandler<?> typeHandler;
+    private String nestedResultMapId;
+    private String nestedQueryId;
+    private Set<String> notNullColumns;
+    private String columnPrefix;
+    private List<ResultFlag> flags;
+    private List<ResultMapping> composites;
+    private String resultSet;
+    private String foreignColumn;
+    private boolean lazy;
+
+    ResultMapping() {
+    }
+}
+```
+
+
+
+
+
+XMLMapperBuilder.java
 
 ```java
 private void resultMapElements(List<XNode> list) {
@@ -622,7 +824,8 @@ private ResultMap resultMapElement
     String extend = resultMapNode.getStringAttribute("extends");
     Boolean autoMapping = resultMapNode.getBooleanAttribute("autoMapping");
     ResultMapResolver resultMapResolver = 
-    	new ResultMapResolver(builderAssistant, id, typeClass, extend, discriminator, resultMappings, autoMapping);
+    	new ResultMapResolver(builderAssistant, id, typeClass, 
+                              extend, discriminator, resultMappings, autoMapping);
     try {
         return resultMapResolver.resolve();
     } catch (IncompleteElementException e) {
