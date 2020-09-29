@@ -555,22 +555,29 @@ StudentMapper.xml
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
-  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+      "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
 <mapper namespace="demo.StudentMapper" >
 
     <cache type="PERPETUAL" eviction="LRU" flushInterval="120000" readOnly="true" size="1024"></cache>
 
-    <resultMap id="fullResult" type="pojo.FullStudent" extends="demo.StudentMapper.basicResult">
-        <association resultMap="demo.HouseMapper.basicResult" property="house" />
-        <collection property="scoreList" ofType="pojo.Score" resultMap="demo.ScoreMapper.basicResult" />
-    </resultMap>
     <resultMap id="basicResult" type="pojo.Student">
         <id column="SNO" property="sno" jdbcType="VARCHAR"></id>
         <result column="CLASS" jdbcType="VARCHAR" property="clazz"></result>
     </resultMap>
+    <resultMap id="fullResult" type="pojo.FullStudent" extends="demo.StudentMapper.basicResult">
+        <constructor>
+            <idArg column="ID" javaType="java.lang.Integer" />
+            <arg column="SBIRTHDAY" javaType="java.util.Date" />
+        </constructor>
+        <!--    <association property="house" javaType="pojo.House" />-->
+        <!--    <collection property="scoreList" ofType="pojo.Score"/>-->
+        <association property="house"  resultMap="demo.HouseMapper.basicResult" />
+        <collection property="scoreList" resultMap="demo.ScoreMapper.basicResult" />
+    </resultMap>
 
     <sql id="columns">
+        STUDENT.ID ID,
         STUDENT.SNO SNO,
         STUDENT.SNAME SNAME,
         STUDENT.SSEX SSEX,
@@ -584,8 +591,15 @@ StudentMapper.xml
     </sql>
 
     <select id="selectFullStudent" resultMap="fullResult" databaseId="mysql">
-        select <include refid="columns"></include> from STUDENT, SCORE, HOUSE 
-        where STUDENT.SNO = SCORE.SNO and HOUSE.HOUSE_MEMBER = STUDENT.SNO and STUDENT.SSEX = #{sex};
+        select
+        <include refid="columns"></include>
+        from STUDENT, SCORE, HOUSE
+        <where>
+            <if test="sex != null">
+                STUDENT.SSEX = #{sex};
+            </if>
+            and STUDENT.SNO = SCORE.SNO and HOUSE.HOUSE_MEMBER = STUDENT.SNO
+        </where>
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="ID"  databaseId="mysql">
@@ -604,7 +618,22 @@ public interface StudentMapper {
 }
 ```
 
-mybatis0-config.xml
+FullStudent.java
+
+```java
+public class FullStudent extends Student {
+    private List<Score> scoreList;
+    private House house;
+    public FullStudent(Integer id, Date sbirthday) {
+        super.setId(id + 10000);
+        super.setSbirthday(new Date(sbirthday.getTime() + 24 * 60 * 60 * 1000));
+        System.out.println("constructor with two argument is called! ");
+    }
+	// setter and getter
+}
+```
+
+mybatis-config.xml
 
 ```xml
 <?xml version="1.0" encoding="UTF-8" ?>
@@ -686,7 +715,7 @@ private void mapperElement(XNode parent) throws Exception {
 }
 ```
 
-
+`XMLConfigBuilder#mapperElement()` 会调用 `XMLMapperBuilder#parse()`。
 
 ```java
 // XMLMapperBuilder.java
@@ -711,7 +740,7 @@ private void configurationElement(XNode context) {
         cacheRefElement(context.evalNode("cache-ref"));
         cacheElement(context.evalNode("cache"));
         parameterMapElement(context.evalNodes("/mapper/parameterMap"));
-        // 这里是我们分析的核心
+        // 这里是本节分析的核心
         resultMapElements(context.evalNodes("/mapper/resultMap"));
         sqlElement(context.evalNodes("/mapper/sql"));
         buildStatementFromContext(context.evalNodes("select|insert|update|delete"));
@@ -723,12 +752,11 @@ private void configurationElement(XNode context) {
 
 #### 保存resultMap的数据结构
 
-每个Result都是
+每个resultMap标签都会对应一个ResultMap的实例。
 
 ```java
 public class ResultMap {
     private Configuration configuration;
-
     private String id;
     private Class<?> type;
     private List<ResultMapping> resultMappings;
@@ -741,18 +769,15 @@ public class ResultMap {
     private boolean hasNestedResultMaps;
     private boolean hasNestedQueries;
     private Boolean autoMapping;
-
     private ResultMap() {
     }
-
 }
 ```
 
-
+每一个resultMap标签下的constructor、id和result标签都会对应一个ResultMapping的实例。
 
 ```java
 public class ResultMapping {
-
     private Configuration configuration;
     private String property;
     private String column;
@@ -768,15 +793,12 @@ public class ResultMapping {
     private String resultSet;
     private String foreignColumn;
     private boolean lazy;
-
     ResultMapping() {
     }
 }
 ```
 
-
-
-
+#### 解析过程
 
 XMLMapperBuilder.java
 
@@ -794,12 +816,13 @@ private ResultMap resultMapElement(XNode resultMapNode) {
     return resultMapElement(resultMapNode, Collections.emptyList(), null);
 }
 private ResultMap resultMapElement
-    	(XNode resultMapNode, List<ResultMapping> additionalResultMappings, Class<?> enclosingType) {
+    (XNode resultMapNode, List<ResultMapping> additionalResultMappings, Class<?> enclosingType) {
     ErrorContext.instance().activity("processing " + resultMapNode.getValueBasedIdentifier());
+    // 找实体类的type
     String type = resultMapNode.getStringAttribute("type",
-                  	  resultMapNode.getStringAttribute("ofType", 
-                  		  resultMapNode.getStringAttribute("resultType",
-                  			  resultMapNode.getStringAttribute("javaType"))));
+    				resultMapNode.getStringAttribute("ofType", 
+                      resultMapNode.getStringAttribute("resultType", 
+                        resultMapNode.getStringAttribute("javaType"))));
     Class<?> typeClass = resolveClass(type);
     if (typeClass == null) {
         typeClass = inheritEnclosingType(resultMapNode, enclosingType);
@@ -809,8 +832,19 @@ private ResultMap resultMapElement
     List<XNode> resultChildren = resultMapNode.getChildren();
     for (XNode resultChild : resultChildren) {
         if ("constructor".equals(resultChild.getName())) {
-            processConstructorElement(resultChild, typeClass, resultMappings);
-        } else if ("discriminator".equals(resultChild.getName())) {
+             List<XNode> argChildren = resultChild.getChildren();
+    		 for (XNode argChild : argChildren) {
+        	 	List<ResultFlag> flags = new ArrayList<>();
+             	// ResultFlag是一个枚举，有两个值CONSTRUCTOR和ID
+        	 	flags.add(ResultFlag.CONSTRUCTOR);
+        	 	if ("idArg".equals(argChild.getName())) {
+             		flags.add(ResultFlag.ID);
+             	}
+             }
+        	 resultMappings.add(buildResultMappingFromContext(argChild, typeClass, flags));
+        } 
+        // 这个实际开发中没用过，所以暂且略过    
+        else if ("discriminator".equals(resultChild.getName())) {
             discriminator = processDiscriminatorElement(resultChild, typeClass, resultMappings);
         } else {
             List<ResultFlag> flags = new ArrayList<>();
@@ -824,7 +858,7 @@ private ResultMap resultMapElement
     String extend = resultMapNode.getStringAttribute("extends");
     Boolean autoMapping = resultMapNode.getBooleanAttribute("autoMapping");
     ResultMapResolver resultMapResolver = 
-    	new ResultMapResolver(builderAssistant, id, typeClass, 
+        new ResultMapResolver(builderAssistant, id, typeClass, 
                               extend, discriminator, resultMappings, autoMapping);
     try {
         return resultMapResolver.resolve();
@@ -832,8 +866,502 @@ private ResultMap resultMapElement
         configuration.addIncompleteResultMap(resultMapResolver);
         throw e;
     }
+}  
+```
+
+从代码中可以看出来，像resultMappings里加入resultMapping的方法是buildResultMappingFromContext，所以下面分析一个这个方法。
+
+```java
+private ResultMapping buildResultMappingFromContext(XNode context, Class<?> resultType, List<ResultFlag> flags) {
+    String property;
+    if (flags.contains(ResultFlag.CONSTRUCTOR)) {
+        // 对于构造器标签，我们建议不要使用name，而是使用javaType。如果使用name，需要开启编译时加上方法参数。
+        property = context.getStringAttribute("name");
+    } else {
+        property = context.getStringAttribute("property");
+    }
+    String column = context.getStringAttribute("column");
+    String javaType = context.getStringAttribute("javaType");
+    String jdbcType = context.getStringAttribute("jdbcType");
+    // 处理嵌套的select
+    String nestedSelect = context.getStringAttribute("select");
+    // 处理association、collection、case三个标签
+    String nestedResultMap = context.getStringAttribute("resultMap", () ->
+    							processNestedResultMappings(context, Collections.emptyList(), resultType));
+    String notNullColumn = context.getStringAttribute("notNullColumn");
+    String columnPrefix = context.getStringAttribute("columnPrefix");
+    String typeHandler = context.getStringAttribute("typeHandler");
+    String resultSet = context.getStringAttribute("resultSet");
+    String foreignColumn = context.getStringAttribute("foreignColumn");
+    boolean lazy = "lazy".equals(context.getStringAttribute("fetchType", 
+                                configuration.isLazyLoadingEnabled() ? "lazy" : "eager"));
+    Class<?> javaTypeClass = resolveClass(javaType);
+    Class<? extends TypeHandler<?>> typeHandlerClass = resolveClass(typeHandler);
+    JdbcType jdbcTypeEnum = resolveJdbcType(jdbcType);
+    // 对ResultMapping的构造使用了建造者模式，MapperBuilderAssistant是用于辅助构建的类。
+    // ResultMapping的内部类Builder是用来构建ResultMappingd的建造者类。
+    return builderAssistant.buildResultMapping(resultType, property, column, javaTypeClass, jdbcTypeEnum, 
+                                               nestedSelect, nestedResultMap, notNullColumn, columnPrefix, 
+                                               typeHandlerClass, flags, resultSet, foreignColumn, lazy);
+}
+private String processNestedResultMappings(XNode context, List<ResultMapping> resultMappings, Class<?> enclosingType) {
+    if (Arrays.asList("association", "collection", "case").contains(context.getName())
+        	&& context.getStringAttribute("select") == null) {
+        validateCollection(context, enclosingType);
+        // association、collection实际上就是一个嵌套的resultMap
+        ResultMap resultMap = resultMapElement(context, resultMappings, enclosingType);
+        return resultMap.getId();
+    }
+    return null;
+}
+protected void validateCollection(XNode context, Class<?> enclosingType) {
+    if ("collection".equals(context.getName()) && context.getStringAttribute("resultMap") == null
+        	&& context.getStringAttribute("javaType") == null) {
+        MetaClass metaResultType = MetaClass.forClass(enclosingType, configuration.getReflectorFactory());
+        String property = context.getStringAttribute("property");
+        if (!metaResultType.hasSetter(property)) {
+            throw new BuilderException(
+                "Ambiguous collection type for property '" + property + "'. You must specify 'javaType' or 'resultMap'.");
+        }
+    }
 }
 ```
+
+MapperBuilderAssistant#buildResultMapping用于赋值和解析参数等操作。
+
+```java
+public ResultMapping buildResultMapping(Class<?> resultType, String property, String column, Class<?> javaType, 
+    	JdbcType jdbcType, String nestedSelect, String nestedResultMap, String notNullColumn, 
+        String columnPrefix, Class<? extends TypeHandler<?>> typeHandler, List<ResultFlag> flags, 
+        String resultSet, String foreignColumn, boolean lazy) {
+    Class<?> javaTypeClass = resolveResultJavaType(resultType, property, javaType);
+    TypeHandler<?> typeHandlerInstance = resolveTypeHandler(javaTypeClass, typeHandler);
+    List<ResultMapping> composites;
+    if ((nestedSelect == null || nestedSelect.isEmpty()) && (foreignColumn == null || foreignColumn.isEmpty())) {
+        composites = Collections.emptyList();
+    } else {
+        composites = parseCompositeColumnName(column);
+    }
+    return new ResultMapping.Builder(configuration, property, column, javaTypeClass)
+        .jdbcType(jdbcType)
+        .nestedQueryId(applyCurrentNamespace(nestedSelect, true))
+        .nestedResultMapId(applyCurrentNamespace(nestedResultMap, true))
+        .resultSet(resultSet)
+        .typeHandler(typeHandlerInstance)
+        .flags(flags == null ? new ArrayList<>() : flags)
+        .composites(composites)
+        .notNullColumns(parseMultipleColumnNames(notNullColumn))
+        .columnPrefix(columnPrefix)
+        .foreignColumn(foreignColumn)
+        .lazy(lazy)
+        .build();
+}
+private Class<?> resolveResultJavaType(Class<?> resultType, String property, Class<?> javaType) {
+    if (javaType == null && property != null) {
+        try {
+            MetaClass metaResultType = MetaClass.forClass(resultType, configuration.getReflectorFactory());
+            javaType = metaResultType.getSetterType(property);
+        } catch (Exception e) {
+            // ignore, following null check statement will deal with the situation
+        }
+    }
+    if (javaType == null) {
+        javaType = Object.class;
+    }
+    return javaType;
+}
+protected final TypeHandlerRegistry typeHandlerRegistry;
+protected TypeHandler<?> resolveTypeHandler(Class<?> javaType, Class<? extends TypeHandler<?>> typeHandlerType) {
+    if (typeHandlerType == null) {
+        return null;
+    }
+    // javaType ignored for injected handlers see issue #746 for full detail
+    TypeHandler<?> handler = typeHandlerRegistry.getMappingTypeHandler(typeHandlerType);
+    if (handler == null) {
+        // not in registry, create a new one
+        handler = typeHandlerRegistry.getInstance(javaType, typeHandlerType);
+    }
+    return handler;
+}
+private List<ResultMapping> parseCompositeColumnName(String columnName) {
+    List<ResultMapping> composites = new ArrayList<>();
+    if (columnName != null && (columnName.indexOf('=') > -1 || columnName.indexOf(',') > -1)) {
+        StringTokenizer parser = new StringTokenizer(columnName, "{}=, ", false);
+        while (parser.hasMoreTokens()) {
+            String property = parser.nextToken();
+            String column = parser.nextToken();
+            ResultMapping complexResultMapping = new ResultMapping.Builder(
+                configuration, property, column, configuration.getTypeHandlerRegistry().getUnknownTypeHandler()).build();
+            composites.add(complexResultMapping);
+        }
+    }
+    return composites;
+}
+```
+
+ResultMapping.Builder类中有很多用于赋值的方法。
+
+```java
+// ResultMapping.Result
+public Builder javaType(Class<?> javaType) {
+    resultMapping.javaType = javaType;
+    return this;
+}
+public Builder jdbcType(JdbcType jdbcType) {
+    resultMapping.jdbcType = jdbcType;
+    return this;
+}
+```
+
+最后的build方法做了一下数据的验证。
+
+```java
+public ResultMapping build() {
+    // lock down collections
+    resultMapping.flags = Collections.unmodifiableList(resultMapping.flags);
+    resultMapping.composites = Collections.unmodifiableList(resultMapping.composites);
+    resolveTypeHandler();
+    validate();
+    return resultMapping;
+}
+private void resolveTypeHandler() {
+    if (resultMapping.typeHandler == null && resultMapping.javaType != null) {
+        Configuration configuration = resultMapping.configuration;
+        TypeHandlerRegistry typeHandlerRegistry = configuration.getTypeHandlerRegistry();
+        resultMapping.typeHandler = typeHandlerRegistry.getTypeHandler(resultMapping.javaType, resultMapping.jdbcType);
+    }
+}
+private void validate() {
+    // Issue #697: cannot define both nestedQueryId and nestedResultMapId
+    if (resultMapping.nestedQueryId != null && resultMapping.nestedResultMapId != null) {
+        throw new IllegalStateException("Cannot define both nestedQueryId and nestedResultMapId in property " + 
+                                        resultMapping.property);
+    }
+    // Issue #5: there should be no mappings without typehandler
+    if (resultMapping.nestedQueryId == null && resultMapping.nestedResultMapId == null
+        	&& resultMapping.typeHandler == null) {
+        throw new IllegalStateException("No typehandler found for property " + resultMapping.property);
+    }
+    // Issue #4 and GH #39: column is optional only in nested resultmaps but not in the rest
+    if (resultMapping.nestedResultMapId == null && resultMapping.column == null && resultMapping.composites.isEmpty()) {
+        throw new IllegalStateException("Mapping is missing column attribute for property " + resultMapping.property);
+    }
+    if (resultMapping.getResultSet() != null) {
+        int numColumns = 0;
+        if (resultMapping.column != null) {
+            numColumns = resultMapping.column.split(",").length;
+        }
+        int numForeignColumns = 0;
+        if (resultMapping.foreignColumn != null) {
+            numForeignColumns = resultMapping.foreignColumn.split(",").length;
+        }
+        if (numColumns != numForeignColumns) {
+            throw new IllegalStateException("...");
+        }
+    }
+}
+```
+
+`buildResultMappingFromContext()` 运行完成后，就会将resultMappin放到resultMappings中。
+
+```java
+private ResultMap resultMapElement
+    (XNode resultMapNode, List<ResultMapping> additionalResultMappings, Class<?> enclosingType) {
+    ErrorContext.instance().activity("processing " + resultMapNode.getValueBasedIdentifier());
+    // 找实体类的type
+    String type = resultMapNode.getStringAttribute("type",
+    				resultMapNode.getStringAttribute("ofType", 
+                      resultMapNode.getStringAttribute("resultType", 
+                        resultMapNode.getStringAttribute("javaType"))));
+    Class<?> typeClass = resolveClass(type);
+    if (typeClass == null) {
+        typeClass = inheritEnclosingType(resultMapNode, enclosingType);
+    }
+    Discriminator discriminator = null;
+    List<ResultMapping> resultMappings = new ArrayList<>(additionalResultMappings);
+    List<XNode> resultChildren = resultMapNode.getChildren();
+    for (XNode resultChild : resultChildren) {
+        if ("constructor".equals(resultChild.getName())) {
+             List<XNode> argChildren = resultChild.getChildren();
+    		 for (XNode argChild : argChildren) {
+        	 	List<ResultFlag> flags = new ArrayList<>();
+             	// ResultFlag是一个枚举，有两个值CONSTRUCTOR和ID
+        	 	flags.add(ResultFlag.CONSTRUCTOR);
+        	 	if ("idArg".equals(argChild.getName())) {
+             		flags.add(ResultFlag.ID);
+             	}
+             }
+        	 resultMappings.add(buildResultMappingFromContext(argChild, typeClass, flags));
+        } 
+        // 这个实际开发中没用过，所以暂且略过    
+        else if ("discriminator".equals(resultChild.getName())) {
+            discriminator = processDiscriminatorElement(resultChild, typeClass, resultMappings);
+        } else {
+            List<ResultFlag> flags = new ArrayList<>();
+            if ("id".equals(resultChild.getName())) {
+                flags.add(ResultFlag.ID);
+            }
+            resultMappings.add(buildResultMappingFromContext(resultChild, typeClass, flags));
+        }
+    }
+    String id = resultMapNode.getStringAttribute("id", resultMapNode.getValueBasedIdentifier());
+    String extend = resultMapNode.getStringAttribute("extends");
+    Boolean autoMapping = resultMapNode.getBooleanAttribute("autoMapping");
+    ResultMapResolver resultMapResolver = new ResultMapResolver(builderAssistant, id, typeClass, 
+                              					extend, discriminator, resultMappings, autoMapping);
+    try {
+        return resultMapResolver.resolve();
+    } catch (IncompleteElementException e) {
+        configuration.addIncompleteResultMap(resultMapResolver);
+        throw e;
+    }
+}  
+```
+
+```java
+// ResultMapResolver
+public class ResultMapResolver {
+    private final MapperBuilderAssistant assistant;
+    private final String id;
+    private final Class<?> type;
+    private final String extend;
+    private final Discriminator discriminator;
+    private final List<ResultMapping> resultMappings;
+    private final Boolean autoMapping;
+    public ResultMapResolver(MapperBuilderAssistant assistant, String id, Class<?> type, 
+        	String extend, Discriminator discriminator, List<ResultMapping> resultMappings, Boolean autoMapping) {
+        this.assistant = assistant;
+        this.id = id;
+        this.type = type;
+        this.extend = extend;
+        this.discriminator = discriminator;
+        this.resultMappings = resultMappings;
+        this.autoMapping = autoMapping;
+    }
+    public ResultMap resolve() {
+        return assistant.addResultMap(this.id, this.type, this.extend, this.discriminator, 
+                                      this.resultMappings, this.autoMapping);
+    }
+}
+```
+
+```java
+// MapperBuilderAssistant.java
+public ResultMap addResultMap(String id, Class<?> type, String extend, Discriminator discriminator,
+    			List<ResultMapping> resultMappings, Boolean autoMapping) {
+    id = applyCurrentNamespace(id, false);
+    extend = applyCurrentNamespace(extend, true);
+	// 处理extend属性
+    if (extend != null) {
+        if (!configuration.hasResultMap(extend)) {
+            throw new IncompleteElementException("Could not find a parent resultmap with id '" + extend + "'");
+        }
+        ResultMap resultMap = configuration.getResultMap(extend);
+        List<ResultMapping> extendedResultMappings = new ArrayList<>(resultMap.getResultMappings());
+        extendedResultMappings.removeAll(resultMappings);
+        // Remove parent constructor if this resultMap declares a constructor.
+        boolean declaresConstructor = false;
+        for (ResultMapping resultMapping : resultMappings) {
+            if (resultMapping.getFlags().contains(ResultFlag.CONSTRUCTOR)) {
+                declaresConstructor = true;
+                break;
+            }
+        }
+        if (declaresConstructor) {
+            extendedResultMappings.removeIf(resultMapping -> resultMapping.getFlags().contains(ResultFlag.CONSTRUCTOR));
+        }
+        resultMappings.addAll(extendedResultMappings);
+    }
+    // 真正构造ResultMap的类
+    ResultMap resultMap = new ResultMap.Builder(configuration, id, type, resultMappings, autoMapping)
+        .discriminator(discriminator)
+        .build();
+    // 这里将构造完成的resultMap放到configuration中
+    configuration.addResultMap(resultMap);
+    return resultMap;
+}
+```
+
+```java
+// ResultMap.Builder
+public ResultMap build() {
+    if (resultMap.id == null) {
+        throw new IllegalArgumentException("ResultMaps must have an id");
+    }
+    resultMap.mappedColumns = new HashSet<>();
+    resultMap.mappedProperties = new HashSet<>();
+    resultMap.idResultMappings = new ArrayList<>();
+    resultMap.constructorResultMappings = new ArrayList<>();
+    resultMap.propertyResultMappings = new ArrayList<>();
+    final List<String> constructorArgNames = new ArrayList<>();
+    for (ResultMapping resultMapping : resultMap.resultMappings) {
+        resultMap.hasNestedQueries = resultMap.hasNestedQueries || resultMapping.getNestedQueryId() != null;
+        resultMap.hasNestedResultMaps = resultMap.hasNestedResultMaps || 
+            (resultMapping.getNestedResultMapId() != null && resultMapping.getResultSet() == null);
+        final String column = resultMapping.getColumn();
+        if (column != null) {
+            resultMap.mappedColumns.add(column.toUpperCase(Locale.ENGLISH));
+        } else if (resultMapping.isCompositeResult()) {
+            for (ResultMapping compositeResultMapping : resultMapping.getComposites()) {
+                final String compositeColumn = compositeResultMapping.getColumn();
+                if (compositeColumn != null) {
+                    resultMap.mappedColumns.add(compositeColumn.toUpperCase(Locale.ENGLISH));
+                }
+            }
+        }
+        final String property = resultMapping.getProperty();
+        if (property != null) {
+            resultMap.mappedProperties.add(property);
+        }
+        if (resultMapping.getFlags().contains(ResultFlag.CONSTRUCTOR)) {
+            resultMap.constructorResultMappings.add(resultMapping);
+            if (resultMapping.getProperty() != null) {
+                constructorArgNames.add(resultMapping.getProperty());
+            }
+        } else {
+            resultMap.propertyResultMappings.add(resultMapping);
+        }
+        if (resultMapping.getFlags().contains(ResultFlag.ID)) {
+            resultMap.idResultMappings.add(resultMapping);
+        }
+    }
+    if (resultMap.idResultMappings.isEmpty()) {
+        resultMap.idResultMappings.addAll(resultMap.resultMappings);
+    }
+    if (!constructorArgNames.isEmpty()) {
+        // 使用构造器时一般使用参数类型，不使用参数名称
+		// ...
+    }
+    // lock down collections
+    resultMap.resultMappings = Collections.unmodifiableList(resultMap.resultMappings);
+    resultMap.idResultMappings = Collections.unmodifiableList(resultMap.idResultMappings);
+    resultMap.constructorResultMappings = Collections.unmodifiableList(resultMap.constructorResultMappings);
+    resultMap.propertyResultMappings = Collections.unmodifiableList(resultMap.propertyResultMappings);
+    resultMap.mappedColumns = Collections.unmodifiableSet(resultMap.mappedColumns);
+    return resultMap;
+}
+```
+
+下图显示了解析完上诉三个Mapper文件后，Configuration里拥有的数据。
+
+<div align="center"><img style="width:60%; " src="image/2020-09-28_150536.png" /></div>
+
+
+
+### CURD
+
+```java
+private void configurationElement(XNode context) {
+    try {
+        String namespace = context.getStringAttribute("namespace");
+        if (namespace == null || namespace.isEmpty()) {
+            throw new BuilderException("Mapper's namespace cannot be empty");
+        }
+        builderAssistant.setCurrentNamespace(namespace);
+        cacheRefElement(context.evalNode("cache-ref"));
+        cacheElement(context.evalNode("cache"));
+        parameterMapElement(context.evalNodes("/mapper/parameterMap"));
+        resultMapElements(context.evalNodes("/mapper/resultMap"));
+        sqlElement(context.evalNodes("/mapper/sql"));
+        // 处理CURD
+        buildStatementFromContext(context.evalNodes("select|insert|update|delete"));
+    } catch (Exception e) {
+        throw new BuilderException("Error parsing Mapper XML. The XML location is '" + resource + "'. Cause: " + e, e);
+    }
+}
+private void buildStatementFromContext(List<XNode> list) {
+    if (configuration.getDatabaseId() != null) {
+        buildStatementFromContext(list, configuration.getDatabaseId());
+    }
+    buildStatementFromContext(list, null);
+}
+private void buildStatementFromContext(List<XNode> list, String requiredDatabaseId) {
+    for (XNode context : list) {
+        // 真正的解析XMLStatement的类
+        final XMLStatementBuilder statementParser = 
+            new XMLStatementBuilder(configuration, builderAssistant, context, requiredDatabaseId);
+        try {
+            statementParser.parseStatementNode();
+        } catch (IncompleteElementException e) {
+            configuration.addIncompleteStatement(statementParser);
+        }
+    }
+}
+```
+
+对curd节点的解析分为四部分，
+
+
+
+```java
+// XMLStatementBuilder.java
+public void parseStatementNode() {
+    String id = context.getStringAttribute("id");
+    String databaseId = context.getStringAttribute("databaseId");
+
+    // 验证databaseId是否符合当前的Statement
+    if (!databaseIdMatchesCurrent(id, databaseId, this.requiredDatabaseId)) {
+        return;
+    }
+
+    String nodeName = context.getNode().getNodeName();
+    SqlCommandType sqlCommandType = SqlCommandType.valueOf(nodeName.toUpperCase(Locale.ENGLISH));
+    boolean isSelect = sqlCommandType == SqlCommandType.SELECT;
+    boolean flushCache = context.getBooleanAttribute("flushCache", !isSelect);
+    boolean useCache = context.getBooleanAttribute("useCache", isSelect);
+    boolean resultOrdered = context.getBooleanAttribute("resultOrdered", false);
+
+    // Include Fragments before parsing
+    XMLIncludeTransformer includeParser = new XMLIncludeTransformer(configuration, builderAssistant);
+    includeParser.applyIncludes(context.getNode());
+
+    String parameterType = context.getStringAttribute("parameterType");
+    Class<?> parameterTypeClass = resolveClass(parameterType);
+
+    String lang = context.getStringAttribute("lang");
+    LanguageDriver langDriver = getLanguageDriver(lang);
+
+    // Parse selectKey after includes and remove them.
+    processSelectKeyNodes(id, parameterTypeClass, langDriver);
+
+    // Parse the SQL (pre: <selectKey> and <include> were parsed and removed)
+    KeyGenerator keyGenerator;
+    String keyStatementId = id + SelectKeyGenerator.SELECT_KEY_SUFFIX;
+    keyStatementId = builderAssistant.applyCurrentNamespace(keyStatementId, true);
+    if (configuration.hasKeyGenerator(keyStatementId)) {
+        keyGenerator = configuration.getKeyGenerator(keyStatementId);
+    } else {
+        keyGenerator = context.getBooleanAttribute("useGeneratedKeys",
+        				configuration.isUseGeneratedKeys() && SqlCommandType.INSERT.equals(sqlCommandType))
+            				? Jdbc3KeyGenerator.INSTANCE : NoKeyGenerator.INSTANCE;
+    }
+
+    SqlSource sqlSource = langDriver.createSqlSource(configuration, context, parameterTypeClass);
+    StatementType statementType = StatementType.valueOf(context.getStringAttribute("statementType", 
+                                                        	StatementType.PREPARED.toString()));
+    Integer fetchSize = context.getIntAttribute("fetchSize");
+    Integer timeout = context.getIntAttribute("timeout");
+    String parameterMap = context.getStringAttribute("parameterMap");
+    String resultType = context.getStringAttribute("resultType");
+    Class<?> resultTypeClass = resolveClass(resultType);
+    String resultMap = context.getStringAttribute("resultMap");
+    String resultSetType = context.getStringAttribute("resultSetType");
+    ResultSetType resultSetTypeEnum = resolveResultSetType(resultSetType);
+    if (resultSetTypeEnum == null) {
+        resultSetTypeEnum = configuration.getDefaultResultSetType();
+    }
+    String keyProperty = context.getStringAttribute("keyProperty");
+    String keyColumn = context.getStringAttribute("keyColumn");
+    String resultSets = context.getStringAttribute("resultSets");
+
+    builderAssistant.addMappedStatement(id, sqlSource, statementType, sqlCommandType,
+                                        fetchSize, timeout, parameterMap, parameterTypeClass, resultMap, resultTypeClass,
+                                        resultSetTypeEnum, flushCache, useCache, resultOrdered,
+                                        keyGenerator, keyProperty, keyColumn, databaseId, langDriver, resultSets);
+}
+```
+
+
 
 
 

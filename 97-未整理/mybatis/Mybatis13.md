@@ -557,7 +557,7 @@ private DataSourceFactory dataSourceElement(XNode context) throws Exception {
 
 <div align="center"><img style="width:50%; " src="image/20209161743.jpg.jpg" /></div>
 
-这一块不解释了，后期在Spring整合Mybatis的时候再看。
+这一块不Debug了，后期在Spring整合Mybatis的时候再看。
 
 
 
