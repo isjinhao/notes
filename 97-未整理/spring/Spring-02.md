@@ -1,5 +1,13 @@
 ##  Dependency Lookup
 
+
+
+
+
+
+
+
+
 ## AbstractApplicationContext 内建可查找的依赖
 
 | Bean 名称                   | Bean 实例                         | 使用场景                |
