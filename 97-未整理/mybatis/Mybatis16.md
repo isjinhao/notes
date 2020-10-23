@@ -55,16 +55,16 @@ private MapperMethodInvoker cachedInvoker(Method method) throws Throwable {
 }
 ```
 
-真正执行的CURD操作的PlainMethodInvoker。
+真正执行的CURD操作的 PlainMethodInvoker。
 
 ```java
 // MapperMethod.java
 public Object execute(SqlSession sqlSession, Object[] args) {
     Object result;
     switch (command.getType()) {	
-        // 可以清楚的看到，INSERT UPDATE 和 DELETE
         case INSERT: {
             Object param = method.convertArgsToSqlCommandParam(args);
+            // 方法 SqlSession#insert(java.lang.String, java.lang.Object) 的第一个参数是statementd的id，第二个参数是sql的入参。
             result = rowCountResult(sqlSession.insert(command.getName(), param));
             break;
         }
@@ -110,6 +110,70 @@ public Object execute(SqlSession sqlSession, Object[] args) {
     return result;
 }
 ```
+
+```java
+// DefaultSqlSession.java
+@Override
+public int insert(String statement, Object parameter) {
+    return update(statement, parameter);
+}
+
+@Override
+public int update(String statement, Object parameter) {
+    try {
+        dirty = true;
+        MappedStatement ms = configuration.getMappedStatement(statement);
+        return executor.update(ms, wrapCollection(parameter));
+    } catch (Exception e) {
+        throw ExceptionFactory.wrapException("Error updating database.  Cause: " + e, e);
+    } finally {
+        ErrorContext.instance().reset();
+    }
+}
+
+private Object wrapCollection(final Object object) {
+    return ParamNameResolver.wrapToMapIfCollection(object, null);
+}
+```
+
+```java
+// ParamNameResolver.java
+public static Object wrapToMapIfCollection(Object object, String actualParamName) {
+    if (object instanceof Collection) {
+        ParamMap<Object> map = new ParamMap<>();
+        // mapper.xml 里的集合用list表示是从这里出来的
+        map.put("collection", object);
+        if (object instanceof List) {
+            map.put("list", object);
+        }
+        Optional.ofNullable(actualParamName).ifPresent(name -> map.put(name, object));
+        return map;
+    } else if (object != null && object.getClass().isArray()) {
+        ParamMap<Object> map = new ParamMap<>();
+        // mapper.xml 里的数组用array表示是从这里出来的
+        map.put("array", object);
+        Optional.ofNullable(actualParamName).ifPresent(name -> map.put(name, object));
+        return map;
+    }
+    return object;
+}
+```
+
+
+
+
+
+```java
+// DefaultSqlSession.java
+public int update(MappedStatement ms, Object parameterObject) throws SQLException {
+    flushCacheIfRequired(ms);
+    return delegate.update(ms, parameterObject);
+}
+```
+
+
+
+
 
 
 

@@ -850,7 +850,7 @@ public CacheKey createCacheKey(MappedStatement ms, Object parameterObject, RowBo
 }
 ```
 
-`createCacheKey()` 是 `BaseExecutor` 的实现。从代码中可以看出key是由留个部分组成的。
+`createCacheKey()` 是 `BaseExecutor` 的实现。从代码中可以看出key是由六个部分组成的。
 
 ```java
 // BaseExecutor.java
