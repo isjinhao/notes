@@ -593,6 +593,8 @@ git tag
 
 <div align="center"><img width="60%" src="http://blogfileqiniu.isjinhao.site/92735eb0-b452-4427-98ad-40b8457a5e9e" /></div>
 <div align="center"><img width="100%" src="http://blogfileqiniu.isjinhao.site/c41761e3-3864-4c49-8147-e27481d01353" /></div>
+
+
 ## GitHub协作开发
 
 **fork**
@@ -600,7 +602,12 @@ git tag
 再申请一个GitHub账户，访问我们当前的项目。此时就可以进行fork，fork就是将别人的项目复制一份到自己的账户下。
 
 <div align="center"><img width="100%" src="http://blogfileqiniu.isjinhao.site/fab23a57-1055-472e-a399-eb0317eb6a73" /></div>
+
+1
+
+
 <div align="center"><img width="100%" src="http://blogfileqiniu.isjinhao.site/df77b911-56f8-4a5f-822f-6a38d823efe4" /></div>
+
 **拉到本地进行修改**
 
 <div align="center"><img width="60%" src="http://blogfileqiniu.isjinhao.site/5bc6f26e-1265-4a53-937c-6acb7b43c584" /></div>

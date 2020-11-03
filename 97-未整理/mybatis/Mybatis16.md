@@ -680,16 +680,25 @@ public Object execute(SqlSession sqlSession, Object[] args) {
     switch (command.getType()) {
 		// ...
         case SELECT:
+            // 用于存储过程的调用 （不常用）
             if (method.returnsVoid() && method.hasResultHandler()) {
                 executeWithResultHandler(sqlSession, args);
                 result = null;
-            } else if (method.returnsMany()) {
+            } 
+            // 返回集合数据类型 （常用）
+            else if (method.returnsMany()) {
                 result = executeForMany(sqlSession, args);
-            } else if (method.returnsMap()) {
+            } 
+            // 返回Map诗句类型 （常用）
+            else if (method.returnsMap()) {
                 result = executeForMap(sqlSession, args);
-            } else if (method.returnsCursor()) {
+            } 
+            // 返回游标类型 （不常用）
+            else if (method.returnsCursor()) {
                 result = executeForCursor(sqlSession, args);
-            } else {
+            } 
+            // 返回单一值 （常用）
+            else {
                 Object param = method.convertArgsToSqlCommandParam(args);
                 result = sqlSession.selectOne(command.getName(), param);
                 if (method.returnsOptional()
@@ -709,6 +718,377 @@ public Object execute(SqlSession sqlSession, Object[] args) {
 ```
 
 
+
+
+
+```java
+private <E> Object executeForMany(SqlSession sqlSession, Object[] args) {
+    List<E> result;
+    Object param = method.convertArgsToSqlCommandParam(args);
+    if (method.hasRowBounds()) {
+        // 获得分页的RowBounds，RowBounds是内存分页，所以我们不使用
+        RowBounds rowBounds = method.extractRowBounds(args);
+        result = sqlSession.selectList(command.getName(), param, rowBounds);
+    } else {
+        // 默认路线
+        result = sqlSession.selectList(command.getName(), param);
+    }
+    // issue #510 Collections & arrays support
+    if (!method.getReturnType().isAssignableFrom(result.getClass())) {
+        if (method.getReturnType().isArray()) {
+            return convertToArray(result);
+        } else {
+            return convertToDeclaredCollection(sqlSession.getConfiguration(), result);
+        }
+    }
+    return result;
+}
+
+// RowBounds有两个属性，offset和limit，前者表示跨过多少记录，后者表示最多显示多少记录
+public <E> List<E> selectList(String statement, Object parameter) {
+    return this.selectList(statement, parameter, RowBounds.DEFAULT);
+}
+
+public <E> List<E> selectList(String statement, Object parameter, RowBounds rowBounds) {
+    try {
+        MappedStatement ms = configuration.getMappedStatement(statement);
+        return executor.query(ms, wrapCollection(parameter), rowBounds, Executor.NO_RESULT_HANDLER);
+    } catch (Exception e) {
+        throw ExceptionFactory.wrapException("Error querying database.  Cause: " + e, e);
+    } finally {
+        ErrorContext.instance().reset();
+    }
+}
+```
+
+
+
+
+
+```java
+
+```
+
+
+
+```
+-801255458:490848855:demo.StudentMapper.selectFullStudent:0:2147483647:select
+     
+      STUDENT.ID ID,
+      STUDENT.SNO SNO,
+      STUDENT.SNAME SNAME,
+      STUDENT.SSEX SSEX,
+      STUDENT.SBIRTHDAY SBIRTHDAY,
+      STUDENT.CLASS CLASS,
+      SCORE.CNO CNO,
+      SCORE.DEGREE DEGREE,
+      HOUSE.HOUSE_ID HOUSE_ID,
+      HOUSE.HOUSE_HOLDER HOUSE_HOLDER,
+      HOUSE.HOUSE_MEMBER HOUSE_MEMBER
+   
+    from STUDENT, SCORE, HOUSE
+     WHERE STUDENT.SSEX = ?
+      
+      and STUDENT.SNO = SCORE.SNO and HOUSE.HOUSE_MEMBER = STUDENT.SNO:男:development
+```
+
+
+
+```java
+// BaseExecutor.java
+public <E> List<E> query(MappedStatement ms, Object parameter, 
+                         RowBounds rowBounds, ResultHandler resultHandler) throws SQLException {
+    BoundSql boundSql = ms.getBoundSql(parameter);
+    // 所有参数的哈希值之和:msID:offset:limit:sql:参数:环境
+    CacheKey key = createCacheKey(ms, parameter, rowBounds, boundSql);
+    return query(ms, parameter, rowBounds, resultHandler, key, boundSql);
+}
+
+public <E> List<E> query(MappedStatement ms, Object parameter, RowBounds rowBounds, 
+    	ResultHandler resultHandler, CacheKey key, BoundSql boundSql) throws SQLException {
+    ErrorContext.instance().resource(ms.getResource()).activity("executing a query").object(ms.getId());
+    if (closed) {
+        throw new ExecutorException("Executor was closed.");
+    }
+    if (queryStack == 0 && ms.isFlushCacheRequired()) {
+        clearLocalCache();
+    }
+    List<E> list;
+    try {
+        queryStack++;
+        list = resultHandler == null ? (List<E>) localCache.getObject(key) : null;
+        if (list != null) {
+            handleLocallyCachedOutputParameters(ms, key, parameter, boundSql);
+        } else {
+            list = queryFromDatabase(ms, parameter, rowBounds, resultHandler, key, boundSql);
+        }
+    } finally {
+        queryStack--;
+    }
+    if (queryStack == 0) {
+        for (DeferredLoad deferredLoad : deferredLoads) {
+            deferredLoad.load();
+        }
+        // issue #601
+        deferredLoads.clear();
+        if (configuration.getLocalCacheScope() == LocalCacheScope.STATEMENT) {
+            // issue #482
+            clearLocalCache();
+        }
+    }
+    return list;
+}
+
+
+private <E> List<E> queryFromDatabase(MappedStatement ms, Object parameter, RowBounds rowBounds, 
+    	ResultHandler resultHandler, CacheKey key, BoundSql boundSql) throws SQLException {
+    List<E> list;
+    localCache.putObject(key, EXECUTION_PLACEHOLDER);
+    try {
+        list = doQuery(ms, parameter, rowBounds, resultHandler, boundSql);
+    } finally {
+        localCache.removeObject(key);
+    }
+    localCache.putObject(key, list);
+    if (ms.getStatementType() == StatementType.CALLABLE) {
+        localOutputParameterCache.putObject(key, parameter);
+    }
+    return list;
+}
+```
+
+
+
+```java
+// SimpleExecutor.java
+public <E> List<E> doQuery(MappedStatement ms, Object parameter, RowBounds rowBounds, 
+                           ResultHandler resultHandler, BoundSql boundSql) throws SQLException {
+    Statement stmt = null;
+    try {
+        Configuration configuration = ms.getConfiguration();
+        // 在doUpdate方法里面这里后两个参数用的是null, null。这里第一个参数实际上也是null。
+        // 第二个参数不是空的原因是如果为空，会执行keyGenerator.processBefore()，查询方法不具有此功能
+        StatementHandler handler = configuration.newStatementHandler(wrapper, 
+                                   	ms, parameter, rowBounds, resultHandler, boundSql);
+        // 此方法的功能和doUpdate一样，都是进行预编译，就不看了
+        stmt = prepareStatement(handler, ms.getStatementLog());
+        return handler.query(stmt, resultHandler);
+    } finally {
+        closeStatement(stmt);
+    }
+}
+```
+
+
+
+
+
+```java
+// PreparedStatementHandler.java
+public <E> List<E> query(Statement statement, ResultHandler resultHandler) throws SQLException {
+    PreparedStatement ps = (PreparedStatement) statement;
+    ps.execute();
+    // 修改的核心是事务的控制，因为要确保数据一致性。
+    // 查询的核心在这个地方，结果集的封装
+    return resultSetHandler.handleResultSets(ps);
+}
+```
+
+
+
+
+
+### 结果集的封装
+
+```java
+public List<Object> handleResultSets(Statement stmt) throws SQLException {
+    ErrorContext.instance().activity("handling results").object(mappedStatement.getId());
+
+    final List<Object> multipleResults = new ArrayList<>();
+
+    int resultSetCount = 0;
+    // 对结果进行包装，
+    ResultSetWrapper rsw = getFirstResultSet(stmt);
+
+    List<ResultMap> resultMaps = mappedStatement.getResultMaps();
+    int resultMapCount = resultMaps.size();
+    validateResultMapsCount(rsw, resultMapCount);
+    while (rsw != null && resultMapCount > resultSetCount) {
+        ResultMap resultMap = resultMaps.get(resultSetCount);
+        handleResultSet(rsw, resultMap, multipleResults, null);
+        rsw = getNextResultSet(stmt);
+        cleanUpAfterHandlingResultSet();
+        resultSetCount++;
+    }
+
+    String[] resultSets = mappedStatement.getResultSets();
+    if (resultSets != null) {
+        while (rsw != null && resultSetCount < resultSets.length) {
+            ResultMapping parentMapping = nextResultMaps.get(resultSets[resultSetCount]);
+            if (parentMapping != null) {
+                String nestedResultMapId = parentMapping.getNestedResultMapId();
+                ResultMap resultMap = configuration.getResultMap(nestedResultMapId);
+                handleResultSet(rsw, resultMap, null, parentMapping);
+            }
+            rsw = getNextResultSet(stmt);
+            cleanUpAfterHandlingResultSet();
+            resultSetCount++;
+        }
+    }
+
+    return collapseSingleResultList(multipleResults);
+}
+```
+
+
+
+获得结果集的包装对象
+
+```java
+// DefalutResultSetHandler.java
+private ResultSetWrapper getFirstResultSet(Statement stmt) throws SQLException {
+    ResultSet rs = stmt.getResultSet();
+    while (rs == null) {
+        // move forward to get the first resultset in case the driver
+        // doesn't return the resultset as the first result (HSQLDB 2.1)
+        if (stmt.getMoreResults()) {
+            rs = stmt.getResultSet();
+        } else {
+            if (stmt.getUpdateCount() == -1) {
+                // no more results. Must be no resultset
+                break;
+            }
+        }
+    }
+    return rs != null ? new ResultSetWrapper(rs, configuration) : null;
+}
+```
+
+
+
+
+
+```java
+// ResultSetWrapper.java
+public ResultSetWrapper(ResultSet rs, Configuration configuration) throws SQLException {
+    super();
+    this.typeHandlerRegistry = configuration.getTypeHandlerRegistry();
+    this.resultSet = rs;
+    final ResultSetMetaData metaData = rs.getMetaData();
+    final int columnCount = metaData.getColumnCount();
+    for (int i = 1; i <= columnCount; i++) {
+        // 都是有序的
+        columnNames.add(configuration.isUseColumnLabel() ? 
+                        metaData.getColumnLabel(i) : metaData.getColumnName(i));
+        jdbcTypes.add(JdbcType.forCode(metaData.getColumnType(i)));
+        classNames.add(metaData.getColumnClassName(i));
+    }
+}
+```
+
+
+
+
+
+```java
+private void handleResultSet(ResultSetWrapper rsw, ResultMap resultMap, 
+    	List<Object> multipleResults, ResultMapping parentMapping) throws SQLException {
+    try {
+        if (parentMapping != null) {
+            handleRowValues(rsw, resultMap, null, RowBounds.DEFAULT, parentMapping);
+        } else {
+            if (resultHandler == null) {
+                DefaultResultHandler defaultResultHandler = new DefaultResultHandler(objectFactory);
+                handleRowValues(rsw, resultMap, defaultResultHandler, rowBounds, null);
+                multipleResults.add(defaultResultHandler.getResultList());
+            } else {
+                handleRowValues(rsw, resultMap, resultHandler, rowBounds, null);
+            }
+        }
+    } finally {
+        // issue #228 (close resultsets)
+        closeResultSet(rsw.getResultSet());
+    }
+}
+
+public void handleRowValues(ResultSetWrapper rsw, ResultMap resultMap, ResultHandler<?> resultHandler, 
+    	RowBounds rowBounds, ResultMapping parentMapping) throws SQLException {
+    if (resultMap.hasNestedResultMaps()) {
+        ensureNoRowBounds();
+        checkResultHandler();
+        handleRowValuesForNestedResultMap(rsw, resultMap, resultHandler, rowBounds, parentMapping);
+    } else {
+        handleRowValuesForSimpleResultMap(rsw, resultMap, resultHandler, rowBounds, parentMapping);
+    }
+}
+```
+
+
+
+
+
+```java
+private void handleRowValuesForNestedResultMap(ResultSetWrapper rsw, ResultMap resultMap, 
+                                               ResultHandler<?> resultHandler, RowBounds rowBounds, 
+                                               ResultMapping parentMapping) throws SQLException {
+    final DefaultResultContext<Object> resultContext = new DefaultResultContext<>();
+    ResultSet resultSet = rsw.getResultSet();
+    skipRows(resultSet, rowBounds);
+    Object rowValue = previousRowValue;
+    // 结果集上下文仍然有效
+    while (shouldProcessMoreRows(resultContext, rowBounds) 
+           && !resultSet.isClosed() && resultSet.next()) {
+        final ResultMap discriminatedResultMap = 
+            resolveDiscriminatedResultMap(resultSet, resultMap, null);
+        final CacheKey rowKey = createRowKey(discriminatedResultMap, rsw, null);
+        Object partialObject = nestedResultObjects.get(rowKey);
+        // issue #577 && #542
+        if (mappedStatement.isResultOrdered()) {
+            if (partialObject == null && rowValue != null) {
+                nestedResultObjects.clear();
+                storeObject(resultHandler, resultContext, rowValue, parentMapping, resultSet);
+            }
+            rowValue = getRowValue(rsw, discriminatedResultMap, rowKey, null, partialObject);
+        } else {
+            rowValue = getRowValue(rsw, discriminatedResultMap, rowKey, null, partialObject);
+            if (partialObject == null) {
+                storeObject(resultHandler, resultContext, rowValue, parentMapping, resultSet);
+            }
+        }
+    }
+    if (rowValue != null && mappedStatement.isResultOrdered() 
+        && shouldProcessMoreRows(resultContext, rowBounds)) {
+        storeObject(resultHandler, resultContext, rowValue, parentMapping, resultSet);
+        previousRowValue = null;
+    } else if (rowValue != null) {
+        previousRowValue = rowValue;
+    }
+}
+
+private boolean shouldProcessMoreRows(ResultContext<?> context, RowBounds rowBounds) {
+    return !context.isStopped() && context.getResultCount() < rowBounds.getLimit();
+}
+
+private CacheKey createRowKey(ResultMap resultMap, ResultSetWrapper rsw, String columnPrefix) throws SQLException {
+    final CacheKey cacheKey = new CacheKey();
+    cacheKey.update(resultMap.getId());
+    // 作为Key的属性
+    List<ResultMapping> resultMappings = getResultMappingsForRowKey(resultMap);
+    if (resultMappings.isEmpty()) {
+        if (Map.class.isAssignableFrom(resultMap.getType())) {
+            createRowKeyForMap(rsw, cacheKey);
+        } else {
+            createRowKeyForUnmappedProperties(resultMap, rsw, cacheKey, columnPrefix);
+        }
+    } else {
+        createRowKeyForMappedProperties(resultMap, rsw, cacheKey, resultMappings, columnPrefix);
+    }
+    if (cacheKey.getUpdateCount() < 2) {
+        return CacheKey.NULL_CACHE_KEY;
+    }
+    return cacheKey;
+}
+```
 
 
 
