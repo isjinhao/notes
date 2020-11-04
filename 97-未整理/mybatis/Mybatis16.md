@@ -1302,15 +1302,15 @@ private boolean shouldApplyAutomaticMappings(ResultMap resultMap, boolean isNest
 }
 ```
 
-
-
-
+应用自动映射
 
 ```java
 private boolean applyAutomaticMappings(ResultSetWrapper rsw, ResultMap resultMap, 
                                        MetaObject metaObject, String columnPrefix) throws SQLException {
-    List<UnMappedColumnAutoMapping> autoMapping = createAutomaticMappings(rsw, resultMap, metaObject, columnPrefix);
+    List<UnMappedColumnAutoMapping> autoMapping = 
+    	createAutomaticMappings(rsw, resultMap, metaObject, columnPrefix);
     boolean foundValues = false;
+    // 对于自动映射上去的属性，会设置属性
     if (!autoMapping.isEmpty()) {
         for (UnMappedColumnAutoMapping mapping : autoMapping) {
             final Object value = mapping.typeHandler.getResult(rsw.getResultSet(), mapping.column);
@@ -1325,9 +1325,116 @@ private boolean applyAutomaticMappings(ResultSetWrapper rsw, ResultMap resultMap
     }
     return foundValues;
 }
+
+private List<UnMappedColumnAutoMapping> createAutomaticMappings(ResultSetWrapper rsw, 
+    	ResultMap resultMap, MetaObject metaObject, String columnPrefix) throws SQLException {
+    final String mapKey = resultMap.getId() + ":" + columnPrefix;
+    List<UnMappedColumnAutoMapping> autoMapping = autoMappingsCache.get(mapKey);
+    if (autoMapping == null) {
+        autoMapping = new ArrayList<>();
+        // unmappedColumnNames已经被记录在ResultSetWrapper中了
+        final List<String> unmappedColumnNames = rsw.getUnmappedColumnNames(resultMap, columnPrefix);
+        for (String columnName : unmappedColumnNames) {
+            String propertyName = columnName;
+            // 对于有前缀的情况，没有前缀的忽略，有前缀的需要去除前缀后在匹配属性
+            if (columnPrefix != null && !columnPrefix.isEmpty()) {
+                if (columnName.toUpperCase(Locale.ENGLISH).startsWith(columnPrefix)) {
+                    propertyName = columnName.substring(columnPrefix.length());
+                } else {
+                    continue;
+                }
+            }
+            // 查找对应的属性
+            final String property = metaObject.findProperty(propertyName, 
+                                    	configuration.isMapUnderscoreToCamelCase());
+            if (property != null && metaObject.hasSetter(property)) {
+                // 如果已经被手动映射了，就不需要自动映射了
+                if (resultMap.getMappedProperties().contains(property)) {
+                    continue;
+                }
+                final Class<?> propertyType = metaObject.getSetterType(property);
+                if (typeHandlerRegistry.hasTypeHandler(propertyType, rsw.getJdbcType(columnName))) {
+                    final TypeHandler<?> typeHandler = rsw.getTypeHandler(propertyType, columnName);
+                    autoMapping.add(new UnMappedColumnAutoMapping(columnName, 
+                                    	property, typeHandler, propertyType.isPrimitive()));
+                } else {
+                    // 默认是什么都不做，实际上可以配置打印日志，见AutoMappingUnknownColumnBehavior
+                    configuration.getAutoMappingUnknownColumnBehavior()
+                        .doAction(mappedStatement, columnName, property, propertyType);
+                }
+            } else {
+                configuration.getAutoMappingUnknownColumnBehavior()
+                    .doAction(mappedStatement, columnName, (property != null) ? 
+                              			property : propertyName, null);
+            }
+        }
+        autoMappingsCache.put(mapKey, autoMapping);
+    }
+    return autoMapping;
+}
 ```
 
+应用属性映射
 
+```java
+private boolean applyPropertyMappings(ResultSetWrapper rsw, ResultMap resultMap, MetaObject metaObject, 
+    	ResultLoaderMap lazyLoader, String columnPrefix) throws SQLException {
+    final List<String> mappedColumnNames = rsw.getMappedColumnNames(resultMap, columnPrefix);
+    boolean foundValues = false;
+    final List<ResultMapping> propertyMappings = resultMap.getPropertyResultMappings();
+    for (ResultMapping propertyMapping : propertyMappings) {
+        String column = prependPrefix(propertyMapping.getColumn(), columnPrefix);
+        if (propertyMapping.getNestedResultMapId() != null) {
+            // the user added a column attribute to a nested result map, ignore it
+            column = null;
+        }
+        if (propertyMapping.isCompositeResult()
+            || (column != null && mappedColumnNames.contains(column.toUpperCase(Locale.ENGLISH)))
+            || propertyMapping.getResultSet() != null) {
+            Object value = getPropertyMappingValue(rsw.getResultSet(), 
+                           		metaObject, propertyMapping, lazyLoader, columnPrefix);
+            // issue #541 make property optional
+            final String property = propertyMapping.getProperty();
+            if (property == null) {
+                continue;
+            } else if (value == DEFERRED) {
+                foundValues = true;
+                continue;
+            }
+            if (value != null) {
+                foundValues = true;
+            }
+            if (value != null || (configuration.isCallSettersOnNulls() && 
+                                  !metaObject.getSetterType(property).isPrimitive())) {
+                // gcode issue #377, call setter on nulls (value is not 'found')
+                metaObject.setValue(property, value);
+            }
+        }
+    }
+    return foundValues;
+}
+
+private Object getPropertyMappingValue(ResultSet rs, MetaObject metaResultObject, 
+		ResultMapping propertyMapping, ResultLoaderMap lazyLoader, String columnPrefix)
+    		throws SQLException {
+    // 子查询，对应 select 属性
+    if (propertyMapping.getNestedQueryId() != null) {
+        return getNestedQueryMappingValue(rs, 
+                                          metaResultObject, propertyMapping, lazyLoader, columnPrefix);
+    } else if (propertyMapping.getResultSet() != null) {
+        // 看不懂，略过
+        addPendingChildRelation(rs, metaResultObject, propertyMapping);   // TODO is that OK?
+        return DEFERRED;
+    } else {
+        // 我们走的是最普通的从结果集获取数据
+        final TypeHandler<?> typeHandler = propertyMapping.getTypeHandler();
+        final String column = prependPrefix(propertyMapping.getColumn(), columnPrefix);
+        return typeHandler.getResult(rs, column);
+    }
+}
+```
+
+应用嵌套结果。
 
 
 
