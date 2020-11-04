@@ -999,7 +999,7 @@ private void handleRowValuesForNestedResultMap(ResultSetWrapper rsw, ResultMap r
     // 内存分页
     skipRows(resultSet, rowBounds);
     Object rowValue = previousRowValue;
-    // 结果集上下文仍然有效
+    // 对每一个记录进行循环
     while (shouldProcessMoreRows(resultContext, rowBounds) 
            && !resultSet.isClosed() && resultSet.next()) {
         final ResultMap discriminatedResultMap = 
@@ -1111,12 +1111,13 @@ private void handleRowValuesForNestedResultMap(ResultSetWrapper rsw, ResultMap r
     // 内存分页
     skipRows(resultSet, rowBounds);
     Object rowValue = previousRowValue;
-    // 结果集上下文仍然有效
+    // 对结果集进行循环
     while (shouldProcessMoreRows(resultContext, rowBounds) 
            && !resultSet.isClosed() && resultSet.next()) {
         final ResultMap discriminatedResultMap = 
             resolveDiscriminatedResultMap(resultSet, resultMap, null);
         final CacheKey rowKey = createRowKey(discriminatedResultMap, rsw, null);
+        // 分区数据。第一次遇到此分区的数据，这里为空
         Object partialObject = nestedResultObjects.get(rowKey);
         // issue #577 && #542
         if (mappedStatement.isResultOrdered()) {
@@ -1135,6 +1136,7 @@ private void handleRowValuesForNestedResultMap(ResultSetWrapper rsw, ResultMap r
     }
     if (rowValue != null && mappedStatement.isResultOrdered() 
         && shouldProcessMoreRows(resultContext, rowBounds)) {
+        // 存在resultHandler中，默认的Handler就是以集合形式保存所有的数据
         storeObject(resultHandler, resultContext, rowValue, parentMapping, resultSet);
         previousRowValue = null;
     } else if (rowValue != null) {
@@ -1152,12 +1154,14 @@ private Object getRowValue(ResultSetWrapper rsw, ResultMap resultMap, CacheKey c
                            String columnPrefix, Object partialObject) throws SQLException {
     final String resultMapId = resultMap.getId();
     Object rowValue = partialObject;
+    // 非第一次遇到分区对象，完成映射
     if (rowValue != null) {
         final MetaObject metaObject = configuration.newMetaObject(rowValue);
         putAncestor(rowValue, resultMapId);
         applyNestedResultMappings(rsw, resultMap, metaObject, columnPrefix, combinedKey, false);
         ancestorObjects.remove(resultMapId);
     } else {
+        // 第一次遇到分区对象，创建分区对象
         final ResultLoaderMap lazyLoader = new ResultLoaderMap();
         // 创建结果对象
         rowValue = createResultObject(rsw, resultMap, lazyLoader, columnPrefix);
@@ -1271,6 +1275,7 @@ private Object getRowValue(ResultSetWrapper rsw, ResultMap resultMap, CacheKey c
                 foundValues = applyAutomaticMappings(rsw, resultMap, metaObject, columnPrefix) || foundValues;
             }
             foundValues = applyPropertyMappings(rsw, resultMap, metaObject, lazyLoader, columnPrefix) || foundValues;
+            // 目的是解决循环依赖
             putAncestor(rowValue, resultMapId);
             foundValues = applyNestedResultMappings(rsw, resultMap, metaObject, columnPrefix, combinedKey, true) 
                 														|| foundValues;
@@ -1436,9 +1441,226 @@ private Object getPropertyMappingValue(ResultSet rs, MetaObject metaResultObject
 
 应用嵌套结果。
 
+```java
+private boolean applyNestedResultMappings(ResultSetWrapper rsw, ResultMap resultMap, 
+    	MetaObject metaObject, String parentPrefix, CacheKey parentRowKey, boolean newObject) {
+    boolean foundValues = false;
+    for (ResultMapping resultMapping : resultMap.getPropertyResultMappings()) {
+        final String nestedResultMapId = resultMapping.getNestedResultMapId();
+        if (nestedResultMapId != null && resultMapping.getResultSet() == null) {
+            try {
+                final String columnPrefix = getColumnPrefix(parentPrefix, resultMapping);
+                final ResultMap nestedResultMap = getNestedResultMap(rsw.getResultSet(), nestedResultMapId, columnPrefix);
+                if (resultMapping.getColumnPrefix() == null) {
+                    // try to fill circular reference only when columnPrefix
+                    // is not specified for the nested result map (issue #215)
+                    Object ancestorObject = ancestorObjects.get(nestedResultMapId);
+                    if (ancestorObject != null) {
+                        if (newObject) {
+                            linkObjects(metaObject, resultMapping, ancestorObject); // issue #385
+                        }
+                        continue;
+                    }
+                }
+                final CacheKey rowKey = createRowKey(nestedResultMap, rsw, columnPrefix);
+                final CacheKey combinedKey = combineKeys(rowKey, parentRowKey);
+                // 分区里一对一的属性第二次遇到这里的时候kownvalue为true
+                Object rowValue = nestedResultObjects.get(combinedKey);
+                boolean knownValue = rowValue != null;
+                instantiateCollectionPropertyIfAppropriate(resultMapping, metaObject); // mandatory
+                if (anyNotNullColumnHasValue(resultMapping, columnPrefix, rsw)) {
+                    rowValue = getRowValue(rsw, nestedResultMap, combinedKey, columnPrefix, rowValue);
+                    if (rowValue != null && !knownValue) {
+                        // 将嵌套结果关联到分区对象
+                        linkObjects(metaObject, resultMapping, rowValue);
+                        foundValues = true;
+                    }
+                }
+            } catch (SQLException e) {
+                throw new ExecutorException("Error getting nested result map values for '" + resultMapping.getProperty() + "'.  Cause: " + e, e);
+            }
+        }
+    }
+    return foundValues;
+}
+```
 
 
 
 
-## 拦截器执行
 
+
+
+
+
+```java
+public void handleRowValues(ResultSetWrapper rsw, ResultMap resultMap, ResultHandler<?> resultHandler, 
+   		RowBounds rowBounds, ResultMapping parentMapping) throws SQLException {
+    if (resultMap.hasNestedResultMaps()) {
+        ensureNoRowBounds();
+        checkResultHandler();
+        // 处理完结果之后就可以退出了
+        handleRowValuesForNestedResultMap(rsw, resultMap, resultHandler, rowBounds, parentMapping);
+    } else {
+        handleRowValuesForSimpleResultMap(rsw, resultMap, resultHandler, rowBounds, parentMapping);
+    }
+}
+```
+
+
+
+```java
+private void handleResultSet(ResultSetWrapper rsw, ResultMap resultMap, List<Object> multipleResults, 
+                             ResultMapping parentMapping) throws SQLException {
+    try {
+        if (parentMapping != null) {
+            handleRowValues(rsw, resultMap, null, RowBounds.DEFAULT, parentMapping);
+        } else {
+            if (resultHandler == null) {
+                DefaultResultHandler defaultResultHandler = new DefaultResultHandler(objectFactory);
+                handleRowValues(rsw, resultMap, defaultResultHandler, rowBounds, null);
+                // 处理完的结果放在multipleResults中
+                multipleResults.add(defaultResultHandler.getResultList());
+            } else {
+                handleRowValues(rsw, resultMap, resultHandler, rowBounds, null);
+            }
+        }
+    } finally {
+        // issue #228 (close resultsets)
+        closeResultSet(rsw.getResultSet());
+    }
+}
+```
+
+
+
+```java
+public List<Object> handleResultSets(Statement stmt) throws SQLException {
+    ErrorContext.instance().activity("handling results").object(mappedStatement.getId());
+
+    final List<Object> multipleResults = new ArrayList<>();
+
+    int resultSetCount = 0;
+    ResultSetWrapper rsw = getFirstResultSet(stmt);
+
+    List<ResultMap> resultMaps = mappedStatement.getResultMaps();
+    int resultMapCount = resultMaps.size();
+    validateResultMapsCount(rsw, resultMapCount);
+    while (rsw != null && resultMapCount > resultSetCount) {
+        ResultMap resultMap = resultMaps.get(resultSetCount);
+        handleResultSet(rsw, resultMap, multipleResults, null);
+        rsw = getNextResultSet(stmt);
+        cleanUpAfterHandlingResultSet();
+        resultSetCount++;
+    }
+
+    // 不知道这个是干什么用的
+    String[] resultSets = mappedStatement.getResultSets();
+    if (resultSets != null) {
+        while (rsw != null && resultSetCount < resultSets.length) {
+            ResultMapping parentMapping = nextResultMaps.get(resultSets[resultSetCount]);
+            if (parentMapping != null) {
+                String nestedResultMapId = parentMapping.getNestedResultMapId();
+                ResultMap resultMap = configuration.getResultMap(nestedResultMapId);
+                handleResultSet(rsw, resultMap, null, parentMapping);
+            }
+            rsw = getNextResultSet(stmt);
+            cleanUpAfterHandlingResultSet();
+            resultSetCount++;
+        }
+    }
+
+    // 聚合数据
+    return collapseSingleResultList(multipleResults);
+}
+```
+
+之后一直返回到此方法。
+
+```java
+private <E> List<E> queryFromDatabase(MappedStatement ms, Object parameter, RowBounds rowBounds, 
+                                      ResultHandler resultHandler, CacheKey key, BoundSql boundSql) throws SQLException {
+    List<E> list;
+    localCache.putObject(key, EXECUTION_PLACEHOLDER);
+    try {
+        // 获得的结果集合
+        list = doQuery(ms, parameter, rowBounds, resultHandler, boundSql);
+    } finally {
+        localCache.removeObject(key);
+    }
+    localCache.putObject(key, list);
+    if (ms.getStatementType() == StatementType.CALLABLE) {
+        localOutputParameterCache.putObject(key, parameter);
+    }
+    return list;
+}
+```
+
+
+
+
+
+```java
+public <E> List<E> query(MappedStatement ms, Object parameter, RowBounds rowBounds, ResultHandler resultHandler, 
+                         CacheKey key, BoundSql boundSql) throws SQLException {
+    ErrorContext.instance().resource(ms.getResource()).activity("executing a query").object(ms.getId());
+    if (closed) {
+        throw new ExecutorException("Executor was closed.");
+    }
+    if (queryStack == 0 && ms.isFlushCacheRequired()) {
+        clearLocalCache();
+    }
+    List<E> list;
+    try {
+        queryStack++;
+        list = resultHandler == null ? (List<E>) localCache.getObject(key) : null;
+        if (list != null) {
+            handleLocallyCachedOutputParameters(ms, key, parameter, boundSql);
+        } else {
+            list = queryFromDatabase(ms, parameter, rowBounds, resultHandler, key, boundSql);
+        }
+    } finally {
+        queryStack--;
+    }
+    if (queryStack == 0) {
+        for (DeferredLoad deferredLoad : deferredLoads) {
+            deferredLoad.load();
+        }
+        // issue #601
+        deferredLoads.clear();
+        // 我们可以在mybatis-config文件的settings标签里配置LocalCacheScope为STATEMENT来禁用一级缓存
+        if (configuration.getLocalCacheScope() == LocalCacheScope.STATEMENT) {
+            // issue #482
+            clearLocalCache();
+        }
+    }
+    return list;
+}
+```
+
+
+
+```java
+private <E> Object executeForMany(SqlSession sqlSession, Object[] args) {
+    List<E> result;
+    Object param = method.convertArgsToSqlCommandParam(args);
+    if (method.hasRowBounds()) {
+        RowBounds rowBounds = method.extractRowBounds(args);
+        result = sqlSession.selectList(command.getName(), param, rowBounds);
+    } else {
+        result = sqlSession.selectList(command.getName(), param);
+    }
+    // issue #510 Collections & arrays support
+    if (!method.getReturnType().isAssignableFrom(result.getClass())) {
+        if (method.getReturnType().isArray()) {
+            // 如果返回值是集合，就转为集合
+            return convertToArray(result);
+        } else {
+            return convertToDeclaredCollection(sqlSession.getConfiguration(), result);
+        }
+    }
+    return result;
+}
+```
+
+最终会返回到DAO层的代码中。
