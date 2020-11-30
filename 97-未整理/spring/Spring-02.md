@@ -67,6 +67,7 @@ BeanDefinition的合并
 
 
 
+Spring的ApplicationAware和实例化，初始化的时间。
 
 
 
@@ -92,10 +93,9 @@ BeanDefinition的合并
 
 
 
+FactoryBean的解析	
 
-
-
-
+ObjectFactory的解析
 
 
 
