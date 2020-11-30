@@ -16,7 +16,7 @@
 
 
 
-BeanFactory。
+BeanFactory。单例多例。
 
 
 
