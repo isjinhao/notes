@@ -2,6 +2,10 @@
 
 Spring IOC的目的就是管理Bean，所以本节的目的就是学习如何运用Spring完成依赖查找和依赖注入。
 
+- 
+
+
+
 
 
 ### Dependency Lookup
