@@ -205,6 +205,54 @@ public class Plugin implements InvocationHandler {
 
 ## PageHelper
 
+```java
+PageHelper.startPage(1, 1);
+List<FullStudent> fullStudents = studentMapper.selectFullStudent(null);
+```
+
+
+
+```java
+protected static boolean DEFAULT_COUNT = true;
+public static <E> Page<E> startPage(int pageNum, int pageSize) {
+    return startPage(pageNum, pageSize, DEFAULT_COUNT);
+}
+public static <E> Page<E> startPage(int pageNum, int pageSize, boolean count) {
+    return startPage(pageNum, pageSize, count, null, null);
+}
+public static <E> Page<E> startPage(int pageNum, int pageSize, boolean count, Boolean reasonable, Boolean pageSizeZero) {
+    Page<E> page = new Page<E>(pageNum, pageSize, count);
+    page.setReasonable(reasonable);
+    page.setPageSizeZero(pageSizeZero);
+    Page<E> oldPage = getLocalPage();
+    if (oldPage != null && oldPage.isOrderByOnly()) {
+        page.setOrderBy(oldPage.getOrderBy());
+    }
+    setLocalPage(page);
+    return page;
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
