@@ -438,72 +438,221 @@ public class SpecialBeanInstantiationDemo {
 
 ### 在BeanFactory容器中拦截Bean的初始化和销毁
 
-```java
-public class BeanInitializationDemo {
-    public static void main(String[] args) {
-        AnnotationConfigApplicationContext applicationContext = 
-            new AnnotationConfigApplicationContext();
-        applicationContext.register(BeanInitializationDemo.class);
-        applicationContext.refresh();
-        System.out.println("Spring上下文已经启动");
-        
-        User user = applicationContext.getBean(User.class);
-        System.out.println(user);
+```xml
+<!-- bean-lifecycle-context.xml -->
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.springframework.org/schema/beans
+https://www.springframework.org/schema/beans/spring-beans.xsd">
 
-        System.out.println("Spring上下文准备关闭");
-        applicationContext.close();
-        System.out.println("Spring上下文已经关闭");
-    }
-    
-    @Bean(initMethod = "initUser", destroyMethod = "destroyUser")
-    public User user() {
-        User user = new User();
-        user.setName("isjinhao");
-        user.setId(100l);
-        return new User();
-    }
-}
+  <bean class="bb.lifecycle.BeanFactoryDomain" id="create-by-constructor" init-method="myInitMethod" destroy-method="myDestroyMethod">
+    <constructor-arg name="age" value="10"></constructor-arg>
+    <constructor-arg name="name" value="create-by-constructor"></constructor-arg>
+  </bean>
+
+  <bean id="create-by-factory-bean" class="bb.lifecycle.BeanFactoryDomainFactoryBean"/>
+</beans>
 ```
 
 ```java
-public class User implements InitializingBean, DisposableBean {
-    private Long id;
+@Getter
+@Setter
+@ToString
+public class BeanFactoryDomain implements DisposableBean, InitializingBean, BeanFactoryAware, BeanNameAware, BeanClassLoaderAware {
+    private Integer age;
     private String name;
-   	// getter and setter
-    public static User createUser() {
-        User user = new User();
-        user.setId(1l);
-        user.setName("isjinhao");
-        return user;
-    }
-    @PostConstruct
-    public void init() {
-        System.out.println("@PostConstruct : User 初始化中 ... ");
-    }
-    @PreDestroy
-    public void preDestroy() {
-        System.out.println("@PreDestroy : User 销毁中...");
-    }
-    public void initUser() {
-        System.out.println("@Bean(initMethod = \"initUser\") : User 初始化中 ... ");
-    }
-    public void destroyUser() {
-        System.out.println("@Bean(destroyMethod = \"destroyUser\") : User 销毁中...");
-    }
-    @Override
-    public void afterPropertiesSet() throws Exception {
-        System.out.println("InitializingBean接口 : User 初始化中 ... ");
+    public BeanFactoryDomain(Integer age, String name) {
+        this.age = age;
+        this.name = name;
     }
     @Override
     public void destroy() throws Exception {
-        System.out.println("DisposableBean接口 : User 销毁中...");
+        System.out.println("12、DisposableBean#destroy");
     }
     @Override
-    protected void finalize() throws Throwable {
-        System.out.println("User 对象正在被回收" );
+    public void afterPropertiesSet() throws Exception {
+        System.out.println("8、InitializingBean#afterPropertiesSet");
+    }
+    @Override
+    public void setBeanClassLoader(ClassLoader classLoader) {
+        System.out.println("5、BeanClassLoaderAware#setBeanClassLoader");
+    }
+    @Override
+    public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
+        System.out.println("6、BeanFactoryAware#setBeanFactory");
+    }
+    @Override
+    public void setBeanName(String name) {
+        System.out.println("4、BeanNameAware#setBeanName");
+    }
+    public void myInitMethod() {
+        System.out.println("9、myInitMethod");
+    }
+    public void myDestroyMethod () {
+        System.out.println("13、myDestroyMethod");
     }
 }
 ```
+
+```java
+public class BeanFactoryDomainFactoryBean implements FactoryBean<BeanFactoryDomain> {
+    @Override
+    public BeanFactoryDomain getObject() throws Exception {
+        return new BeanFactoryDomain(20, "create-by-factory-bean");
+    }
+    @Override
+    public Class<?> getObjectType() {
+        return BeanFactoryDomain.class;
+    }
+}
+```
+
+```java
+public class BeanFactoryLifeCycleDemo {
+    static class TestMergedBeanDefinitionPostProcessor implements MergedBeanDefinitionPostProcessor {
+        @Override
+        public void postProcessMergedBeanDefinition(RootBeanDefinition beanDefinition, Class<?> beanType, String beanName) {
+            System.out.println("2、MergedBeanDefinitionPostProcessor#postProcessMergedBeanDefinition：" + 
+                               beanDefinition.getBeanClass());
+        }
+    }
+    static class TestInstantiationAwareBeanPostProcessor implements InstantiationAwareBeanPostProcessor {
+        @Override
+        public boolean postProcessAfterInstantiation(Object bean, String beanName) throws BeansException {
+            System.out.println("3、InstantiationAwareBeanPostProcessor#postProcessAfterInstantiation：" + bean.getClass());
+            return false;
+        }
+        @Override
+        public Object postProcessBeforeInstantiation(Class<?> beanClass, String beanName) throws BeansException {
+            System.out.println("1、InstantiationAwareBeanPostProcessor#postProcessBeforeInstantiation：" + beanClass);
+            return null;
+        }
+        @Override
+        public PropertyValues postProcessProperties(PropertyValues pvs, Object bean, String beanName) throws BeansException {
+            System.out.println("InstantiationAwareBeanPostProcessor#postProcessProperties");
+            return null;
+        }
+    }
+    static class TestBeanPostProcessor implements BeanPostProcessor {
+        @Override
+        public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
+            System.out.println("7、BeanPostProcessor#postProcessBeforeInitialization：" + bean.getClass());
+            return null;
+        }
+        @Override
+        public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
+            System.out.println("10、BeanPostProcessor#postProcessAfterInitialization：" + bean.getClass());
+            return null;
+        }
+    }
+    static class MyDestructionAwareBeanPostProcessor implements DestructionAwareBeanPostProcessor {
+        @Override
+        public void postProcessBeforeDestruction(Object bean, String beanName) throws BeansException {
+            System.out.println("11、DestructionAwareBeanPostProcessor#postProcessBeforeDestruction：" + bean.getClass());
+        }
+    }
+    public static void main(String[] args) {
+        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+        XmlBeanDefinitionReader reader = new XmlBeanDefinitionReader(beanFactory);
+        // XML 配置文件 ClassPath 路径
+        String location = "META-INF/bean-lifecycle-context.xml";
+        // 加载配置
+        int beanDefinitionsCount = reader.loadBeanDefinitions(location);
+        System.out.println("Bean 定义加载的数量：" + beanDefinitionsCount);
+        beanFactory.addBeanPostProcessor(new TestMergedBeanDefinitionPostProcessor());
+        beanFactory.addBeanPostProcessor(new TestInstantiationAwareBeanPostProcessor());
+        beanFactory.addBeanPostProcessor(new TestBeanPostProcessor());
+        beanFactory.addBeanPostProcessor(new MyDestructionAwareBeanPostProcessor());
+        // 依赖查找集合对象
+        beanFactory.getBean("create-by-constructor");
+        beanFactory.destroySingleton("create-by-constructor");
+        System.out.println("----------------------------------");
+        beanFactory.getBean("create-by-factory-bean");
+        beanFactory.destroySingleton("create-by-factory-bean");
+    }
+}
+```
+
+结果如下：
+
+```
+Bean 定义加载的数量：2
+1、InstantiationAwareBeanPostProcessor#postProcessBeforeInstantiation：class bb.lifecycle.BeanFactoryDomain
+2、MergedBeanDefinitionPostProcessor#postProcessMergedBeanDefinition：class bb.lifecycle.BeanFactoryDomain
+3、InstantiationAwareBeanPostProcessor#postProcessAfterInstantiation：class bb.lifecycle.BeanFactoryDomain
+4、BeanNameAware#setBeanName
+5、BeanClassLoaderAware#setBeanClassLoader
+6、BeanFactoryAware#setBeanFactory
+7、BeanPostProcessor#postProcessBeforeInitialization：class bb.lifecycle.BeanFactoryDomain
+8、InitializingBean#afterPropertiesSet
+9、myInitMethod
+10、BeanPostProcessor#postProcessAfterInitialization：class bb.lifecycle.BeanFactoryDomain
+11、DestructionAwareBeanPostProcessor#postProcessBeforeDestruction：class bb.lifecycle.BeanFactoryDomain
+12、DisposableBean#destroy
+13、myDestroyMethod
+----------------------------------
+1、InstantiationAwareBeanPostProcessor#postProcessBeforeInstantiation：class bb.lifecycle.BeanFactoryDomainFactoryBean
+2、MergedBeanDefinitionPostProcessor#postProcessMergedBeanDefinition：class bb.lifecycle.BeanFactoryDomainFactoryBean
+3、InstantiationAwareBeanPostProcessor#postProcessAfterInstantiation：class bb.lifecycle.BeanFactoryDomainFactoryBean
+7、BeanPostProcessor#postProcessBeforeInitialization：class bb.lifecycle.BeanFactoryDomainFactoryBean
+10、BeanPostProcessor#postProcessAfterInitialization：class bb.lifecycle.BeanFactoryDomainFactoryBean
+10、BeanPostProcessor#postProcessAfterInitialization：class bb.lifecycle.BeanFactoryDomain
+11、DestructionAwareBeanPostProcessor#postProcessBeforeDestruction：class bb.lifecycle.BeanFactoryDomainFactoryBean
+```
+
+在构造器构造的Bean中，一共有13个步骤可以拦截User的初始化，但是在FactoryBean构造的Bean中，虽然有7个步骤，但是真正能对User进行操作的只有第10步，其他的都是对BeanFactoryDomainFactoryBean本身操作。
+
+
+
+### BeanDefinition的合并
+
+如果B类继承了A类，那么在实例化B类的时候，父类的BeanDefinition的数据可以子类被使用。完成这一功能的步骤是BeanDefinition的合并。
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.springframework.org/schema/beans
+https://www.springframework.org/schema/beans/spring-beans.xsd">
+
+  <bean class="bb.lifecycle.BeanFactoryDomain" id="create-by-constructor" 
+        init-method="myInitMethod" destroy-method="myDestroyMethod">
+    <constructor-arg name="age" value="10"></constructor-arg>
+    <constructor-arg name="name" value="create-by-constructor"></constructor-arg>
+  </bean>
+
+  <bean class="bb.lifecycle.BeanFactoryDomainExtended" id="child-bean" parent="create-by-constructor" />
+
+</beans>
+```
+
+```java
+public class BeanDefinitionMergeDemo {
+    public static void main(String[] args) {
+        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+        XmlBeanDefinitionReader reader = new XmlBeanDefinitionReader(beanFactory);
+        // XML 配置文件 ClassPath 路径
+        String location = "META-INF/bean-merge-context.xml";
+        // 加载配置
+        int beanDefinitionsCount = reader.loadBeanDefinitions(location);
+        System.out.println("Bean 定义的数量：" + beanDefinitionsCount);
+        System.out.println(beanFactory.getBean("child-bean"));
+        System.out.println("Bean 加载的数量：" + beanFactory.getSingletonCount());
+        beanFactory.destroySingleton("child-bean");
+    }
+}
+```
+
+#### BeanDefiniton合并的源码Debug
+
+
+
+
+
+### ObjectProvider
+
+
 
 
 
