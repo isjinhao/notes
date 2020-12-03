@@ -44,7 +44,7 @@ public class EventObject implements java.io.Serializable {
             throw new IllegalArgumentException("null source");
         this.source = source;
     }
-    public Object getSource() {
+    public Object getSource() {M,
         return source;
     }
     public String toString() {
@@ -53,7 +53,7 @@ public class EventObject implements java.io.Serializable {
 }
 ```
 
-两个类都很简单，不再解释了。
+两个类都很简单，不再解释了。一般来说，Java里面的时间都继承EventObject，监听器都继承EventListener。
 
 
 
