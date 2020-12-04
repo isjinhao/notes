@@ -632,7 +632,6 @@ public class BeanDefinitionMergeDemo {
     public static void main(String[] args) {
         DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
         XmlBeanDefinitionReader reader = new XmlBeanDefinitionReader(beanFactory);
-        // XML 配置文件 ClassPath 路径
         String location = "META-INF/bean-merge-context.xml";
         // 加载配置
         int beanDefinitionsCount = reader.loadBeanDefinitions(location);
@@ -646,44 +645,493 @@ public class BeanDefinitionMergeDemo {
 
 #### BeanDefiniton合并的源码Debug
 
-
-
-
-
-### ObjectProvider
-
-
-
-
-
-### Bean的回收
-
-ApplicationContext关闭之后，Bean是会被回收的。
+AbstractBeanFactory#doGetBean会调用AbstractBeanFactory#getMergedLocalBeanDefinition，这个方法会合并BeanDefinition。
 
 ```java
-public class BeanGarbageCollectionDemo {
-    public static void main(String[] args) throws InterruptedException {
-        AnnotationConfigApplicationContext applicationContext = new AnnotationConfigApplicationContext();
-        applicationContext.register(BeanInitializationDemo.class);
-        applicationContext.refresh();
-        User user = applicationContext.getBean(User.class);
+// AbstractBeanFactory.java
+protected RootBeanDefinition getMergedLocalBeanDefinition(String beanName) throws BeansException {
+    // Quick check on the concurrent map first, with minimal locking.
+    RootBeanDefinition mbd = this.mergedBeanDefinitions.get(beanName);
+    if (mbd != null && !mbd.stale) {
+        return mbd;
+    }
+    // getBeanDefinition方法就是从beanDefinitionMap里面查找
+    return getMergedBeanDefinition(beanName, getBeanDefinition(beanName));
+}
+protected RootBeanDefinition getMergedBeanDefinition(String beanName, BeanDefinition bd)
+    throws BeanDefinitionStoreException {
+    return getMergedBeanDefinition(beanName, bd, null);
+}
+protected RootBeanDefinition getMergedBeanDefinition(
+    String beanName, BeanDefinition bd, @Nullable BeanDefinition containingBd)
+    throws BeanDefinitionStoreException {
 
-        System.out.println("Spring上下文准备关闭");
-        applicationContext.close();
-        System.out.println("Spring上下文已经关闭");
+    synchronized (this.mergedBeanDefinitions) {
+        RootBeanDefinition mbd = null;
+        RootBeanDefinition previous = null;
 
-        Thread.sleep(10000L);
-        System.gc();
-        Thread.sleep(10000L);
+        // Check with full lock now in order to enforce the same merged instance.
+        if (containingBd == null) {
+            mbd = this.mergedBeanDefinitions.get(beanName);
+        }
+        if (mbd == null || mbd.stale) {
+            previous = mbd;
+            if (bd.getParentName() == null) {
+                // Use copy of given root bean definition.
+                if (bd instanceof RootBeanDefinition) {
+                    mbd = ((RootBeanDefinition) bd).cloneBeanDefinition();
+                }
+                else {
+                    mbd = new RootBeanDefinition(bd);
+                }
+            }
+            else {
+                // Child bean definition: needs to be merged with parent.
+                BeanDefinition pbd;
+                try {
+                    String parentBeanName = transformedBeanName(bd.getParentName());
+                    if (!beanName.equals(parentBeanName)) {
+                        // 递归调用，用于获取父亲的BeanDefinition
+                        pbd = getMergedBeanDefinition(parentBeanName);
+                    }
+                    else {
+                        BeanFactory parent = getParentBeanFactory();
+                        if (parent instanceof ConfigurableBeanFactory) {
+                            pbd = ((ConfigurableBeanFactory) parent).
+                                getMergedBeanDefinition(parentBeanName);
+                        }
+                        else {
+                            // 异常处理...
+                        }
+                    }
+                }
+                // 异常处理...
+                // pbd是父亲的BeanDefinition，这是一次深拷贝。
+                mbd = new RootBeanDefinition(pbd);
+                // bd是当前Bean的BeanDefinition，用当前的值覆盖之前的值
+                mbd.overrideFrom(bd);
+            }
+            // Set default singleton scope, if not configured before.
+            if (!StringUtils.hasLength(mbd.getScope())) {
+                mbd.setScope(SCOPE_SINGLETON);
+            }
+            // A bean contained in a non-singleton bean cannot be a singleton itself.
+            // Let's correct this on the fly here, since this might be the result of
+            // parent-child merging for the outer bean, in which case the original inner bean
+            // definition will not have inherited the merged outer bean's singleton status.
+            if (containingBd != null && !containingBd.isSingleton() && mbd.isSingleton()) {
+                mbd.setScope(containingBd.getScope());
+            }
+            // Cache the merged bean definition for the time being
+            // (it might still get re-merged later on in order to pick up metadata changes)
+            if (containingBd == null && isCacheBeanMetadata()) {
+                this.mergedBeanDefinitions.put(beanName, mbd);
+            }
+        }
+        if (previous != null) {
+            copyRelevantMergedBeanDefinitionCaches(previous, mbd);
+        }
+        return mbd;
     }
 }
 ```
 
 
 
+### ObjectProvider
+
+Spring依赖注入时有一个ObjectProvider拓展点，虽然现在没有用到，但是我们先看看BeanFactory如何获取一个ObjectProvider。
+
+```java
+public class ObjectProviderDemo {
+    public static void main(String[] args) {
+        BeanDefinitionBuilder beanDefinitionBuilder = 
+            BeanDefinitionBuilder.genericBeanDefinition(User.class);
+        beanDefinitionBuilder.addPropertyValue("id", 1);
+        beanDefinitionBuilder.addPropertyValue("name", "isjinhao");
+        beanDefinitionBuilder.setLazyInit(true);
+        // 创建 BeanFactory 容器
+        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+        beanFactory.registerBeanDefinition("aha", beanDefinitionBuilder.getBeanDefinition());
+        ObjectProvider<User> objectProvider = beanFactory.getBeanProvider(User.class);
+        System.out.println(objectProvider.getObject());
+        System.out.println("获得了 ObjectProvider 对象，接下来获得 User 对象");
+        System.out.println(objectProvider.getObject());
+    }
+}
+```
+
+```java
+// DefaultListableBeanFactory.java	
+public <T> ObjectProvider<T> getBeanProvider(Class<T> requiredType) throws BeansException {
+    Assert.notNull(requiredType, "Required type must not be null");
+    return getBeanProvider(ResolvableType.forRawClass(requiredType));
+}
+public <T> ObjectProvider<T> getBeanProvider(ResolvableType requiredType) {
+    return new BeanObjectProvider<T>() {
+        @Override
+        public T getObject() throws BeansException {
+            T resolved = resolveBean(requiredType, null, false);
+            if (resolved == null) {
+                throw new NoSuchBeanDefinitionException(requiredType);
+            }
+            return resolved;
+        }
+        @Override
+        public T getObject(Object... args) throws BeansException {
+            T resolved = resolveBean(requiredType, args, false);
+            if (resolved == null) {
+                throw new NoSuchBeanDefinitionException(requiredType);
+            }
+            return resolved;
+        }
+        @Override
+        @Nullable
+        public T getIfAvailable() throws BeansException {
+            return resolveBean(requiredType, null, false);
+        }
+        @Override
+        @Nullable
+        public T getIfUnique() throws BeansException {
+            return resolveBean(requiredType, null, true);
+        }
+        @Override
+        public Stream<T> stream() {
+            return Arrays.stream(getBeanNamesForTypedStream(requiredType))
+                .map(name -> (T) getBean(name))
+                .filter(bean -> !(bean instanceof NullBean));
+        }
+        @Override
+        public Stream<T> orderedStream() {
+            String[] beanNames = getBeanNamesForTypedStream(requiredType);
+            Map<String, T> matchingBeans = new LinkedHashMap<>(beanNames.length);
+            for (String beanName : beanNames) {
+                Object beanInstance = getBean(beanName);
+                if (!(beanInstance instanceof NullBean)) {
+                    matchingBeans.put(beanName, (T) beanInstance);
+                }
+            }
+            Stream<T> stream = matchingBeans.values().stream();
+            return stream.sorted(adaptOrderComparator(matchingBeans));
+        }
+    };
+}
+```
+
+BeanObjectProvider是ObjectProvider子接口。它只返回一个代理，真正的Bean在getObject()方法执行的时候才获取。
+
+```java
+// DefaultListableBeanFactory.BeanObjectProvider.class
+public T getObject() throws BeansException {
+    T resolved = resolveBean(requiredType, null, false);
+    if (resolved == null) {
+        throw new NoSuchBeanDefinitionException(requiredType);
+    }
+    return resolved;
+}
+```
+
+```java
+// DefaultListableBeanFactory.java
+private <T> T resolveBean(ResolvableType requiredType, 
+                          @Nullable Object[] args, boolean nonUniqueAsNull) {
+    // 这里返回的是个包装类，内部有两个属性：beanName和beanInstance
+    NamedBeanHolder<T> namedBean = resolveNamedBean(requiredType, args, nonUniqueAsNull);
+    if (namedBean != null) {
+        return namedBean.getBeanInstance();
+    }
+    BeanFactory parent = getParentBeanFactory();
+    if (parent instanceof DefaultListableBeanFactory) {
+        return ((DefaultListableBeanFactory) parent).resolveBean(requiredType, args, nonUniqueAsNull);
+    }
+    else if (parent != null) {
+        ObjectProvider<T> parentProvider = parent.getBeanProvider(requiredType);
+        if (args != null) {
+            return parentProvider.getObject(args);
+        }
+        else {
+            return (nonUniqueAsNull ? parentProvider.getIfUnique() : parentProvider.getIfAvailable());
+        }
+    }
+    return null;
+}
+private <T> NamedBeanHolder<T> resolveNamedBean(ResolvableType requiredType, 
+    	@Nullable Object[] args, boolean nonUniqueAsNull) throws BeansException {
+    Assert.notNull(requiredType, "Required type must not be null");
+    String[] candidateNames = getBeanNamesForType(requiredType);
+
+    if (candidateNames.length > 1) {
+        List<String> autowireCandidates = new ArrayList<>(candidateNames.length);
+        for (String beanName : candidateNames) {
+            if (!containsBeanDefinition(beanName) || 
+                	getBeanDefinition(beanName).isAutowireCandidate()) {
+                autowireCandidates.add(beanName);
+            }
+        }
+        if (!autowireCandidates.isEmpty()) {
+            candidateNames = StringUtils.toStringArray(autowireCandidates);
+        }
+    }
+	// 当此类型的对象只有一个的时候，直接取出来
+    if (candidateNames.length == 1) {
+        String beanName = candidateNames[0];
+        return new NamedBeanHolder<>(beanName, (T) getBean(beanName, requiredType.toClass(), args));
+    }
+    else if (candidateNames.length > 1) {
+        Map<String, Object> candidates = new LinkedHashMap<>(candidateNames.length);
+        for (String beanName : candidateNames) {
+            if (containsSingleton(beanName) && args == null) {
+                Object beanInstance = getBean(beanName);
+                candidates.put(beanName, (beanInstance instanceof NullBean ? null : beanInstance));
+            }
+            else {
+                candidates.put(beanName, getType(beanName));
+            }
+        }
+        // 如果有多个的话，优先去Primary的实例
+        String candidateName = determinePrimaryCandidate(candidates, requiredType.toClass());
+        if (candidateName == null) {
+            // 没有实例被标记为Primary的时候，取Order最高的
+            candidateName = determineHighestPriorityCandidate(candidates, requiredType.toClass());
+        }
+        if (candidateName != null) {
+            Object beanInstance = candidates.get(candidateName);
+            if (beanInstance == null || beanInstance instanceof Class) {
+                beanInstance = getBean(candidateName, requiredType.toClass(), args);
+            }
+            return new NamedBeanHolder<>(candidateName, (T) beanInstance);
+        }
+        if (!nonUniqueAsNull) {
+            throw new NoUniqueBeanDefinitionException(requiredType, candidates.keySet());
+        }
+    }
+    return null;
+}
+```
 
 
 
+### BeanFactory的继承
+
+之前代码Debug，遇到了工厂继承的实现，所以这里就演示一下。
+
+```java
+public class HierarchicalDemo {
+
+    public static void main(String[] args) {
+        DefaultListableBeanFactory parentFactory = new DefaultListableBeanFactory();
+        DefaultListableBeanFactory childFactory = new DefaultListableBeanFactory();
+        childFactory.setParentBeanFactory(parentFactory);
+
+        // 在父工厂中定义一个parentBean
+        BeanDefinitionBuilder beanDefinitionBuilder1 = BeanDefinitionBuilder.genericBeanDefinition(User.class);
+        beanDefinitionBuilder1.addPropertyValue("id", 1);
+        beanDefinitionBuilder1.addPropertyValue("name", "isjinhao");
+        AbstractBeanDefinition beanDefinition1 = beanDefinitionBuilder1.getBeanDefinition();
+        parentFactory.registerBeanDefinition("parentBean", beanDefinition1);
+        // 在子工厂中定义一个childBean
+        BeanDefinitionBuilder beanDefinitionBuilder2 = BeanDefinitionBuilder.genericBeanDefinition(User.class);
+        beanDefinitionBuilder2.addPropertyValue("id", 2);
+        beanDefinitionBuilder2.addPropertyValue("name", "zhanjinhao");
+        AbstractBeanDefinition beanDefinition2 = beanDefinitionBuilder2.getBeanDefinition();
+        childFactory.registerBeanDefinition("childBean", beanDefinition2);
+
+        // 子工厂获取父亲的Bean，可以获取到
+        System.out.println(childFactory.getBean("parentBean"));
+        // 父工厂获取孩子的Bean，抛异常
+        System.out.println(parentFactory.getBean("childBean"));
+    }
+
+}
+```
+
+
+
+## 依赖查找
+
+BeanFactory只提供了依赖查找的功能。依赖注入是ApplicationContext提供的功能。下面演示一下依赖查找找不到的情况，以及常见的异常。
+
+
+
+### 类型安全的依赖查找
+
+在开发时，很可能某个Bean是无法查找的情况，Spring在实现的时候有些情况抛出异常，有些情况返回null。所以下面就演示一下常用的依赖查找对应的处理方式。
+
+- 按BeanName查找Bean
+- 按Bean的类型查找
+- 查找ObjectFactory
+- 查找ObjectProvider
+- 查找ObjectProvider的Stream
+
+```java
+public class TypeSafetyDependencyLookupDemo {
+
+    public static void main(String[] args) {
+        // 创建 BeanFactory 容器
+        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+
+        // 演示按名称查找Bean的安全性
+        displayBeanFactoryGetBeanByName(beanFactory, "isjinhao");
+
+        // 演示 BeanFactory#getBean 方法的安全性
+        displayBeanFactoryGetBean(beanFactory);
+
+        // 演示 ObjectFactory#getObject 方法的安全性
+        displayObjectFactoryGetObject(beanFactory);
+
+        // 演示 ObjectProvider#getIfAvaiable 方法的安全性
+        displayObjectProviderIfAvailable(beanFactory);
+
+        // 演示 ListableBeanFactory#getBeansOfType 方法的安全性
+        displayListableBeanFactoryGetBeansOfType(beanFactory);
+
+        // 演示 ObjectProvider Stream 操作的安全性
+        displayObjectProviderStreamOps(beanFactory);
+
+    }
+
+    private static void displayBeanFactoryGetBeanByName(BeanFactory beanFactory, String beanName) {
+        printBeansException("displayBeanFactoryGetBean", () -> beanFactory.getBean(beanName));
+    }
+
+    public static void displayBeanFactoryGetBean(BeanFactory beanFactory) {
+        printBeansException("displayBeanFactoryGetBean", () -> beanFactory.getBean(User.class));
+    }
+
+    private static void displayObjectFactoryGetObject(DefaultListableBeanFactory beanFactory) {
+        // ObjectProvider is ObjectFactory
+        ObjectFactory<User> userObjectFactory = beanFactory.getBeanProvider(User.class);
+        printBeansException("displayObjectFactoryGetObject", () -> userObjectFactory.getObject());
+    }
+
+    private static void displayObjectProviderIfAvailable(DefaultListableBeanFactory beanFactory) {
+        ObjectProvider<User> userObjectProvider = beanFactory.getBeanProvider(User.class);
+        printBeansException("displayObjectProviderIfAvailable", () -> userObjectProvider.getIfAvailable());
+    }
+
+    private static void displayListableBeanFactoryGetBeansOfType(ListableBeanFactory beanFactory) {
+        printBeansException("displayListableBeanFactoryGetBeansOfType", () -> beanFactory.getBeansOfType(User.class));
+    }
+
+    private static void displayObjectProviderStreamOps(BeanFactory beanFactory) {
+        ObjectProvider<User> userObjectProvider = beanFactory.getBeanProvider(User.class);
+        printBeansException("displayObjectProviderStreamOps", () -> userObjectProvider.forEach(System.out::println));
+    }
+
+    private static void printBeansException(String source, Runnable runnable) {
+        System.err.println("Source from :" + source);
+        try {
+            runnable.run();
+            System.out.println("");
+        } catch (BeansException exception) {
+            exception.printStackTrace();
+        }
+        System.err.println("==========================================\n\n\n");
+    }
+
+}
+```
+
+
+
+### 依赖查找最可能出现的三种异常
+
+**BeanCreationException**
+
+```java
+public class BeanCreationExceptionDemo {
+    public static void main(String[] args) {
+        // 创建 BeanFactory 容器
+        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+
+        // 注册 BeanDefinition Bean Class 是一个 POJO 普通类，不过初始化方法回调时抛出异常
+        BeanDefinitionBuilder beanDefinitionBuilder = 
+            BeanDefinitionBuilder.genericBeanDefinition(POJO.class);
+        beanFactory.registerBeanDefinition("errorBean", beanDefinitionBuilder.getBeanDefinition());
+        System.out.println(beanFactory.getBean(POJO.class));
+    }
+
+    static class POJO implements InitializingBean {
+        @Override
+        public void afterPropertiesSet() throws Exception {
+            throw new Exception("afterPropertiesSet() : exception ...");
+        }
+    }
+}
+```
+
+**BeanInstantiationException**
+
+```java
+public class BeanInstantiationExceptionDemo 
+    public static void main(String[] args) {
+        // 创建 BeanFactory 容器
+        DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+
+        // 注册 Bean。CharSequence 是一个接口
+        BeanDefinitionBuilder beanDefinitionBuilder = 
+        	BeanDefinitionBuilder.genericBeanDefinition(CharSequence.class);
+        beanFactory.registerBeanDefinition("errorBean", beanDefinitionBuilder.getBeanDefinition());
+        System.out.println(beanFactory.getBean("errorBean"));
+    }
+}
+```
+
+**NoUniqueBeanDefinitionException**
+
+```java
+public class NoUniqueBeanDefinitionExceptionDemo {
+    public static void main(String[] args) {
+
+        // 这里偷个懒，使用了注解，但是getBean()方法底层还是调用了DefaultListableBeanFactory的getBean()
+
+        // 创建 BeanFactory 容器
+        AnnotationConfigApplicationContext applicationContext = 
+            new AnnotationConfigApplicationContext();
+        // 将当前类 NoUniqueBeanDefinitionExceptionDemo 作为配置类（Configuration Class）
+        applicationContext.register(NoUniqueBeanDefinitionExceptionDemo.class);
+        // 启动应用上下文
+        applicationContext.refresh();
+
+        try {
+            // 由于 Spring 应用上下文存在两个 String 类型的 Bean，通过单一类型查找会抛出异常
+            applicationContext.getBean(String.class);
+        } catch (NoUniqueBeanDefinitionException e) {
+            System.err.printf(" Spring 应用上下文存在%d个 %s 类型的 Bean，具体原因：%s%n",
+                    e.getNumberOfBeansFound(),
+                    String.class.getName(),
+                    e.getMessage());
+        }
+        // 关闭应用上下文
+        applicationContext.close();
+    }
+
+    @Bean
+    public String bean1() {
+        return "1";
+    }
+
+    @Bean
+    public String bean2() {
+        return "2";
+    }
+
+    @Bean
+    public String bean3() {
+        return "3";
+    }
+}
+```
+
+
+
+### BeanFactoryUtils
+
+BeanFactoryUtils是beans包提供的一个操作Spring的工具类，我们之前见过他的一个方法：transformedBeanName，它的目的是去除FactoryBean本身Bean的&前缀。
+
+<img width = "80%" src = "image/2020-12-04_172608.jpg" div align = center />
+
+相关的方法都在上面，不再一一演示。
 
 
 
