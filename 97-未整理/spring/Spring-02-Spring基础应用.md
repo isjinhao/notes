@@ -1129,9 +1129,40 @@ public class NoUniqueBeanDefinitionExceptionDemo {
 
 BeanFactoryUtils是beans包提供的一个操作Spring的工具类，我们之前见过他的一个方法：transformedBeanName，它的目的是去除FactoryBean本身Bean的&前缀。
 
-<img width = "80%" src = "image/2020-12-04_172608.jpg" div align = center />
+<img width = "70%" src = "image/2020-12-04_172608.jpg" div align = center />
 
-相关的方法都在上面，不再一一演示。
+相关的方法都在上面，我们演示两个方法，beanNamesForTypeIncludingAncestors和beansOfTypeIncludingAncestors。
+
+```java
+public class BeanFactoryUtilsDemo {
+    public static void main(String[] args) {
+
+        DefaultListableBeanFactory parentFactory = new DefaultListableBeanFactory();
+        DefaultListableBeanFactory childFactory = new DefaultListableBeanFactory();
+        childFactory.setParentBeanFactory(parentFactory);
+
+        // 在父工厂中定义一个parentBean
+        BeanDefinitionBuilder beanDefinitionBuilder1 = 
+            BeanDefinitionBuilder.genericBeanDefinition(User.class);
+        beanDefinitionBuilder1.addPropertyValue("id", 1);
+        beanDefinitionBuilder1.addPropertyValue("name", "isjinhao");
+        AbstractBeanDefinition beanDefinition1 = beanDefinitionBuilder1.getBeanDefinition();
+        parentFactory.registerBeanDefinition("parentBean", beanDefinition1);
+        // 在子工厂中定义一个childBean
+        BeanDefinitionBuilder beanDefinitionBuilder2 = 
+            BeanDefinitionBuilder.genericBeanDefinition(User.class);
+        beanDefinitionBuilder2.addPropertyValue("id", 2);
+        beanDefinitionBuilder2.addPropertyValue("name", "zhanjinhao");
+        AbstractBeanDefinition beanDefinition2 = beanDefinitionBuilder2.getBeanDefinition();
+        childFactory.registerBeanDefinition("childBean", beanDefinition2);
+
+        System.out.println(Arrays.deepToString(
+            BeanFactoryUtils.beanNamesForTypeIncludingAncestors(childFactory, User.class)));
+        System.out.println(BeanFactoryUtils.beansOfTypeIncludingAncestors(childFactory, User.class));
+
+    }
+}
+```
 
 
 
