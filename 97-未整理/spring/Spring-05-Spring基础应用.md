@@ -756,13 +756,15 @@ public AnnotatedBeanDefinitionReader(BeanDefinitionRegistry registry, Environmen
 
 ## 依赖的处理过程
 
-之前在填充属性时已经知道，处理依赖的接口定义为AutowireCapableBeanFactory#resolveDependency，实现是在类DefaultListableBeanFactory中。我们给一个很完整的案例，看看每种类型分别是怎么处理的。
+之前在填充属性时已经知道，处理依赖的接口定义为AutowireCapableBeanFactory#resolveDependency，实现是在类DefaultListableBeanFactory中。我们后面给一个很完整的案例，看看每种类型分别是怎么处理的。
 
 - Bean类型
 - Collection类型
 - Map类型
 - ObjectProvider
-- 分组
+- Optional
+- 限定注入
+- Provider类型
 
 ### InjectionMetadata
 
@@ -938,8 +940,7 @@ protected void inject(Object bean, @Nullable String beanName, @Nullable Property
     Object value;
     if (this.cached) {
         value = resolvedCachedArgument(beanName, this.cachedFieldValue);
-    }
-    else {
+    } else {
         DependencyDescriptor desc = new DependencyDescriptor(field, this.required);
         desc.setContainingClass(bean.getClass());
         Set<String> autowiredBeanNames = new LinkedHashSet<>(1);
@@ -954,6 +955,7 @@ protected void inject(Object bean, @Nullable String beanName, @Nullable Property
                 if (value != null || this.required) {
                     this.cachedFieldValue = desc;
                     registerDependentBeans(beanName, autowiredBeanNames);
+                    // 从这里可以看出，如果被注入的Bean存在多个，不会进入shortcut
                     if (autowiredBeanNames.size() == 1) {
                         String autowiredBeanName = autowiredBeanNames.iterator().next();
                         if (beanFactory.containsBean(autowiredBeanName) &&
@@ -962,8 +964,7 @@ protected void inject(Object bean, @Nullable String beanName, @Nullable Property
                                 desc, autowiredBeanName, field.getType());
                         }
                     }
-                }
-                else {
+                } else {
                     this.cachedFieldValue = null;
                 }
                 this.cached = true;
@@ -1051,318 +1052,75 @@ protected void inject(Object bean, @Nullable String beanName, @Nullable Property
 
 可以看到，属性元素和方法元素的处理都是调用AutowireCapableBeanFactory的resolveDependency实现的。对于方法，处理的是每一个参数。
 
+#### shortcut
 
-
-### resolveDependency
+ShortcutDependencyDescriptor是DependencyDescriptor的子类，它复写了resolveShortcut方法。它只有一个构造函数：
 
 ```java
-public Object resolveDependency(DependencyDescriptor descriptor, @Nullable String requestingBeanName,
-    	@Nullable Set<String> autowiredBeanNames, @Nullable TypeConverter typeConverter) 
-    		throws BeansException {
-
-    descriptor.initParameterNameDiscovery(getParameterNameDiscoverer());
-    if (Optional.class == descriptor.getDependencyType()) {
-        return createOptionalDependency(descriptor, requestingBeanName);
+private static class ShortcutDependencyDescriptor extends DependencyDescriptor {
+    // 就是autowired填充的Bean的名称
+    private final String shortcut;
+    private final Class<?> requiredType;
+    public ShortcutDependencyDescriptor
+        	(DependencyDescriptor original, String shortcut, Class<?> requiredType) {
+        super(original);
+        this.shortcut = shortcut;
+        this.requiredType = requiredType;
     }
-    else if (ObjectFactory.class == descriptor.getDependencyType() ||
-             ObjectProvider.class == descriptor.getDependencyType()) {
-        return new DependencyObjectProvider(descriptor, requestingBeanName);
-    }
-    else if (javaxInjectProviderClass == descriptor.getDependencyType()) {
-        return new Jsr330Factory().createDependencyProvider(descriptor, requestingBeanName);
-    } else {
-        Object result = getAutowireCandidateResolver().getLazyResolutionProxyIfNecessary(
-            descriptor, requestingBeanName);
-        if (result == null) {
-            result = 
-                doResolveDependency(descriptor, requestingBeanName, autowiredBeanNames, typeConverter);
-        }
-        return result;
+    @Override
+    public Object resolveShortcut(BeanFactory beanFactory) {
+        return beanFactory.getBean(this.shortcut, this.requiredType);
     }
 }
 ```
 
-resolveDependency内表面上看分五种情况：
-
-- Optional
-- ObjectProvider
-- jsr330的Provider
-- Lazy
-- 直接处理
-
-#### Lazy
-
-我们先看Lazy的情况。
-
-我们之前看到过AutowireCandidateResolver这个接口的实现类：ContextAnnotationAutowireCandidateResolver。在AnnotationConfigUtils的registerAnnotationConfigProcessors里面会将这个类设置为DefaultListableBeanFactory的AutowireCandidateResolver。
+如果被注入的point是属性，会存储这个属性的shortcut，如果注入的point是方法，会存储所有方法参数的shortcut。
 
 ```java
-public Object getLazyResolutionProxyIfNecessary
-    	(DependencyDescriptor descriptor, @Nullable String beanName) {
-    return (isLazy(descriptor) ? buildLazyResolutionProxy(descriptor, beanName) : null);
-}
-```
-
-##### 判断Lazy的标准
-
-```java
-protected boolean isLazy(DependencyDescriptor descriptor) {
-    for (Annotation ann : descriptor.getAnnotations()) {
-        Lazy lazy = AnnotationUtils.getAnnotation(ann, Lazy.class);
-        if (lazy != null && lazy.value()) {
-            return true;
-        }
-    }
-    MethodParameter methodParam = descriptor.getMethodParameter();
-    if (methodParam != null) {
-        Method method = methodParam.getMethod();
-        if (method == null || void.class == method.getReturnType()) {
-            Lazy lazy = AnnotationUtils.getAnnotation(methodParam.getAnnotatedElement(), Lazy.class);
-            if (lazy != null && lazy.value()) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-```
-
-DependencyDescriptor是InjectionPoint的子类。
-
-```java
-// InjectionPoint.java
-public Annotation[] getAnnotations() {
-    if (this.field != null) {
-        Annotation[] fieldAnnotations = this.fieldAnnotations;
-        if (fieldAnnotations == null) {
-            fieldAnnotations = this.field.getAnnotations();
-            this.fieldAnnotations = fieldAnnotations;
-        }
-        return fieldAnnotations;
-    } else {
-        return obtainMethodParameter().getParameterAnnotations();
-    }
-}
-```
-
-```java
-// MethodParamter.java
-public AnnotatedElement getAnnotatedElement() {
-    return this.executable;
-}
-```
-
-如果是属性，判断Lazy的标准是属性上有没有@Lazy。如果是方法，方法上加了@Lazy，所有的方法参数都是Lazy的，如果某个方法参数加上了@Lazy，此参数是Lazy的。
-
-##### 构建Lazy
-
-```java
-protected Object buildLazyResolutionProxy
-    	(final DependencyDescriptor descriptor, final @Nullable String beanName) {
-    Assert.state(getBeanFactory() instanceof DefaultListableBeanFactory,
-                 "BeanFactory needs to be a DefaultListableBeanFactory");
-    final DefaultListableBeanFactory beanFactory = (DefaultListableBeanFactory) getBeanFactory();
-    TargetSource ts = new TargetSource() {
-        @Override
-        public Class<?> getTargetClass() {
-            return descriptor.getDependencyType();
-        }
-        @Override
-        public boolean isStatic() {
-            return false;
-        }
-        @Override
-        public Object getTarget() {
-            Object target = beanFactory.doResolveDependency(descriptor, beanName, null, null);
-            if (target == null) {
-                Class<?> type = getTargetClass();
-                if (Map.class == type) {
-                    return Collections.emptyMap();
-                }
-                else if (List.class == type) {
-                    return Collections.emptyList();
-                }
-                else if (Set.class == type || Collection.class == type) {
-                    return Collections.emptySet();
-                }
-                // 抛出异常...
-            }
-            return target;
-        }
-        @Override
-        public void releaseTarget(Object target) {
-        }
-    };
-    ProxyFactory pf = new ProxyFactory();
-    pf.setTargetSource(ts);
-    Class<?> dependencyType = descriptor.getDependencyType();
-    if (dependencyType.isInterface()) {
-        pf.addInterface(dependencyType);
-    }
-    return pf.getProxy(beanFactory.getBeanClassLoader());
-}
-```
-
-构建Lazy对象是通过动态代理构建一个代理对象。AOP这块在后面再说。
-
-#### 创建Optional对象
-
-```java
-private Optional<?> createOptionalDependency(
-    	DependencyDescriptor descriptor, @Nullable String beanName, final Object... args) {
-
-    DependencyDescriptor descriptorToUse = new NestedDependencyDescriptor(descriptor) {
-        @Override
-        public boolean isRequired() {
-            return false;
-        }
-        @Override
-        public Object resolveCandidate
-            (String beanName, Class<?> requiredType, BeanFactory beanFactory) {
-            return (!ObjectUtils.isEmpty(args) ? beanFactory.getBean(beanName, args) :
-                    super.resolveCandidate(beanName, requiredType, beanFactory));
-        }
-    };
-    Object result = doResolveDependency(descriptorToUse, beanName, null, null);
-    return (result instanceof Optional ? (Optional<?>) result : Optional.ofNullable(result));
-}
-```
-
-创建Optional对象的方式是使用doResolveDependency方法创建对象，再包装成Optional。
-
-#### ObjectProvider
-
-```java
-// DependencyObjectProvider.class
-private final DependencyDescriptor descriptor;
-private final boolean optional;
-private final String beanName;
-
-public DependencyObjectProvider(DependencyDescriptor descriptor, @Nullable String beanName) {
-    this.descriptor = new NestedDependencyDescriptor(descriptor);
-    this.optional = (this.descriptor.getDependencyType() == Optional.class);
-    this.beanName = beanName;
-}
-
-@Override
-public Object getObject() throws BeansException {
-    if (this.optional) {
-        return createOptionalDependency(this.descriptor, this.beanName);
+private Object resolvedCachedArgument(@Nullable String beanName, @Nullable Object cachedArgument) {
+    if (cachedArgument instanceof DependencyDescriptor) {
+        DependencyDescriptor descriptor = (DependencyDescriptor) cachedArgument;
+        Assert.state(this.beanFactory != null, "No BeanFactory available");
+        return this.beanFactory.resolveDependency(descriptor, beanName, null, null);
     }
     else {
-        Object result = doResolveDependency(this.descriptor, this.beanName, null, null);
-        if (result == null) {
-            throw new NoSuchBeanDefinitionException(this.descriptor.getResolvableType());
-        }
-        return result;
-    }
-}
-```
-
-DependencyObjectProvider是BeanObjectProvider的实现类，而BeanObjectProvider继承了ObjectProvider和Serializable，所以DependencyObjectProvider就是ObjectProvider的实现类。
-
-可以看见代码里面，包装的是Optional对象，会调用createOptionalDependency方法创建依赖，否则调用doResolveDependency方法创建对象。
-
-#### Provider
-
-```java
-private class Jsr330Factory implements Serializable {
-    public Object createDependencyProvider(DependencyDescriptor descriptor, @Nullable String beanName) {
-        return new Jsr330Provider(descriptor, beanName);
-    }
-
-    private class Jsr330Provider extends DependencyObjectProvider implements Provider<Object> {
-        public Jsr330Provider(DependencyDescriptor descriptor, @Nullable String beanName) {
-            super(descriptor, beanName);
-        }
-
-        @Override
-        @Nullable
-        public Object get() throws BeansException {
-            return getValue();
-        }
+        return cachedArgument;
     }
 }
 ```
 
 ```java
-// DependencyObjectProvider.class
-private class DependencyObjectProvider implements BeanObjectProvider<Object> {
-    protected Object getValue() throws BeansException {
-        if (this.optional) {
-            return createOptionalDependency(this.descriptor, this.beanName);
-        }
-        else {
-            return doResolveDependency(this.descriptor, this.beanName, null, null);
+private Object[] resolveCachedArguments(@Nullable String beanName) {
+    Object[] cachedMethodArguments = this.cachedMethodArguments;
+    if (cachedMethodArguments == null) {
+        return null;
+    }
+    Object[] arguments = new Object[cachedMethodArguments.length];
+    for (int i = 0; i < arguments.length; i++) {
+        arguments[i] = resolvedCachedArgument(beanName, cachedMethodArguments[i]);
+    }
+    return arguments;
+}
+```
+
+可以看见，在从缓存中获取依赖的时候依然是通过resolveDependency获取的。
+
+```java
+public Object doResolveDependency(DependencyDescriptor descriptor, @Nullable String beanName,
+    	@Nullable Set<String> autowiredBeanNames, @Nullable TypeConverter typeConverter) 
+    		throws BeansException {
+    InjectionPoint previousInjectionPoint = ConstructorResolver.setCurrentInjectionPoint(descriptor);
+    try {
+        Object shortcut = descriptor.resolveShortcut(this);
+        if (shortcut != null) {
+            return shortcut;
         }
     }
+    // ...
 }
 ```
 
-```java
-public interface Provider<T> {
-    T get();
-}
-```
-
-Provider是jsr330提出的一个标准，这里可以看见，Spring是实现Provider这个功能的时候也实现了ObjectProvider的方法。
-
-#### 正常情况
-
-对于注入的一个普通Bean，这里也是使用doResolveDependency方法处理。所以后面就会介绍这个方法的执行。
-
-
-
-### DependencyDescriptor
-
-DependencyDescriptor是用来描述依赖的。
-
-```java
-public class DependencyDescriptor extends InjectionPoint implements Serializable {
-
-	private final Class<?> declaringClass;
-
-	@Nullable
-	private String methodName;
-
-	@Nullable
-	private Class<?>[] parameterTypes;
-
-	private int parameterIndex;
-
-	@Nullable
-	private String fieldName;
-
-	private final boolean required;
-
-	private final boolean eager;
-
-	private int nestingLevel = 1;
-
-	@Nullable
-	private Class<?> containingClass;
-
-	@Nullable
-	private transient volatile ResolvableType resolvableType;
-
-	@Nullable
-	private transient volatile TypeDescriptor typeDescriptor;
-}
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+只不过当调用到doResolveDependency方法的时候会返回shortcut值，默认返回为空， ShortcutDependencyDescriptor返回的为BeanFactory里的Bean。
 
 
 

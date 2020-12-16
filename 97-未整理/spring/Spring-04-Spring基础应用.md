@@ -226,6 +226,7 @@ protected void finishBeanFactoryInitialization(ConfigurableListableBeanFactory b
     beanFactory.setTempClassLoader(null);
 
     // Allow for caching all bean definition metadata, not expecting further changes.
+    // 在此之后便不再允许通过BeanDefinition的方式注册Bean了，但是仍然可以注册singleton。
     beanFactory.freezeConfiguration();
 
     // Instantiate all remaining (non-lazy-init) singletons.
@@ -935,30 +936,7 @@ public @interface UserGroup2 {
 ```
 
 ```java
-public class CustomizeQualifierAnnotationDependencyInjectionDemo {
-
-    @Autowired
-    private User user;
-
-    @Autowired
-    @Qualifier("user1")
-    private User namedUser;
-
-    @Autowired
-    private Collection<User> allUsers;
-
-    @Autowired
-    @Qualifier
-    private Collection<User> qualifiedUsers;
-
-    @Autowired
-    @UserGroup1
-    private Collection<User> group1Users;
-
-    @Autowired
-    @UserGroup2
-    private Collection<User> group2Users;
-
+public class GroupTestBeanFactory {
     @Bean
     public User user1() {
         return createUser(1L);
@@ -999,31 +977,60 @@ public class CustomizeQualifierAnnotationDependencyInjectionDemo {
         user.setId(id);
         return user;
     }
+}
+```
+
+```java
+public class CustomizeQualifierAnnotationDependencyInjectionDemo {
+
+    @Autowired
+    private Collection<User> allUsers;
+
+    @Autowired
+    @Qualifier
+    private Collection<User> qualifiedUsers;
+
+    @Autowired
+    @UserGroup1
+    private Collection<User> group1Users;
+
+    @Autowired
+    @UserGroup2
+    private Collection<User> group2Users;
 
     public static void main(String[] args) {
+
+        // 创建 BeanFactory 容器
         AnnotationConfigApplicationContext applicationContext = 
             new AnnotationConfigApplicationContext();
+        // 注册 Configuration Class（配置类） -> Spring Bean
+        applicationContext.register(GroupTestBeanFactory.class);
         applicationContext.register(CustomizeQualifierAnnotationDependencyInjectionDemo.class);
-        
-        XmlBeanDefinitionReader beanDefinitionReader = new XmlBeanDefinitionReader(applicationContext);
-        String xmlResourcePath = "META-INF/dependency-setter-injection.xml";
-        beanDefinitionReader.loadBeanDefinitions(xmlResourcePath);
 
+        // 启动 Spring 应用上下文
         applicationContext.refresh();
 
         CustomizeQualifierAnnotationDependencyInjectionDemo demo = 
             applicationContext.getBean(CustomizeQualifierAnnotationDependencyInjectionDemo.class);
 
-        System.out.println(applicationContext.getBeansOfType(User.class));
-        System.out.println("demo.user = " + demo.user);
-        System.out.println("demo.namedUser = " + demo.namedUser);
-        System.out.println("demo.allUsers = " + demo.allUsers);
-        System.out.println("demo.qualifiedUsers = " + demo.qualifiedUsers);
-        System.out.println("demo.groupedUsers = " + demo.group1Users);
-        System.out.println("demo.groupedUsers = " + demo.group2Users);
+        System.out.println("demo.allUsers = ");
+        demo.allUsers.stream().forEach(System.out::println);
+        System.out.println("-----------------------------");
+        System.out.println("demo.qualifiedUsers = ");
+        demo.qualifiedUsers.stream().forEach(System.out::println);
+        System.out.println("-----------------------------");
 
+        System.out.println("demo.group1Users = ");
+        demo.group1Users.stream().forEach(System.out::println);
+        System.out.println("-----------------------------");
+        System.out.println("demo.group2Users = ");
+        demo.group2Users.stream().forEach(System.out::println);
+        System.out.println("-----------------------------");
+
+        // 显示地关闭 Spring 应用上下文
         applicationContext.close();
     }
+
 }
 ```
 
