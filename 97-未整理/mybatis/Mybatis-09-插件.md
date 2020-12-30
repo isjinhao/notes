@@ -235,30 +235,88 @@ public static <E> Page<E> startPage(int pageNum, int pageSize, boolean count, Bo
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ## 拦截selectKey
+
+一个拦截标签selectKey执行，将Oracle序列转为Redis逐渐的方式。
+
+```java
+@Intercepts({@Signature(type = Executor.class, method = "query", args = {MappedStatement.class, Object.class, RowBounds.class, ResultHandler.class})})
+public class SelectKeyPlugin implements Interceptor {
+
+    private String prefix;
+
+    private static final String sequenceQueryReg = "^SELECT(\\s+)(\\w+).NEXTVAL(\\s+)FROM(\\s+)DUAL$";
+
+    @Override
+    public Object intercept(Invocation invocation) throws Throwable {
+
+        Object[] args = invocation.getArgs();
+        MappedStatement mappedStatement = (MappedStatement) args[0];
+        RowBounds rowBounds = (RowBounds) args[2];
+        ResultHandler resultHandler = (ResultHandler) args[3];
+
+        // 1、SelectKeyGenerator.processGeneratedKeys 在执行 Executor.query 方法时传入的后两个参数是 RowBounds.DEFAULT 和 Executor.NO_RESULT_HANDLER；
+        // 2、MapperAnnotationBuilder.handleSelectKeyAnnotation 和 XMLStatementBuilder.parseSelectKeyNodes 方法在处理 selectKey 注解和 selectKey 标签
+        //    时都会把 StatementHandler 后面加上后缀 SelectKeyGenerator.SELECT_KEY_SUFFIX；
+        // 所以这三个条件作为一个过滤条件，如果不满足这三个条件，则不认为是 selectKey 的执行语句。
+        if (rowBounds != RowBounds.DEFAULT || resultHandler != Executor.NO_RESULT_HANDLER || !mappedStatement.getId().endsWith(SelectKeyGenerator.SELECT_KEY_SUFFIX)) {
+            return invocation.proceed();
+        }
+
+        Object parameter = args[1];
+        // 获取待执行的获取序列ID的sql语句
+        BoundSql boundSql = mappedStatement.getBoundSql(parameter);
+        String sql = boundSql.getSql();
+
+        // 老库的表依然走老库的序列
+        if (sql.contains("@com.sf.sfa.common.constant.TableNameConst@OLD_FOC_DUAL")) {
+            invocation.proceed();
+        }
+
+        System.out.println("SelectKeyPlugin 拦截到方法 " + mappedStatement.getId().replaceAll(SelectKeyGenerator.SELECT_KEY_SUFFIX, "") + " 的selectKey执行！");
+
+        // 提取序列名
+        String sequenceName = extractSequenceName(sql);
+        if (sequenceName == null) {
+            return invocation.proceed();
+        }
+
+        // SelectKeyGenerator.processGeneratedKeys 方法中调用 Executor.query 方法时用 List<Object> 接收
+        List<Object> objects = new ArrayList<>();
+        //        objects.add(BizCodeGenerator.generateSequence(sequenceName));
+        return objects;
+    }
+
+    @Override
+    public Object plugin(Object target) {
+        return Plugin.wrap(target, this);
+    }
+
+    @Override
+    public void setProperties(Properties properties) {
+        this.prefix = properties.getProperty("prefix");
+    }
+
+    private static String extractSequenceName(String sql) {
+        sql = sql.toUpperCase();
+        Pattern compile = Pattern.compile(sequenceQueryReg);
+        Matcher matcher = compile.matcher(sql);
+        List<String> sequenceNameList = new ArrayList<>();
+        // 遍历SQL，有且仅有一个序列名的时候，返回序列名，其他情况返回空
+        while (matcher.find()) {
+            sequenceNameList.add(matcher.group(2));
+        }
+        if (sequenceNameList != null && sequenceNameList.size() == 1) {
+            return sequenceNameList.get(0);
+        }
+        return null;
+    }
+}
+```
+
+
+
+
+
+
+
