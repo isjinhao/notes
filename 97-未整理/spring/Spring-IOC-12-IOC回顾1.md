@@ -753,6 +753,157 @@ private Set<BeanDefinition> scanCandidateComponents(String basePackage) {
 }
 ```
 
+@Lookup
+
+```java
+public class HelloWorldService {
+    public void helloWorld(String str) {
+        System.out.println("helloWorld : " + str);
+    }
+}
+```
+
+```java
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
+public class LookupTestBean {
+    @Autowired
+    private HelloWorldService service;
+    
+    private String msg;
+
+    public void print() {
+        service.helloWorld(msg);
+    }
+
+    public LookupTestBean(String msg) {
+        this.msg = msg;
+    }
+}
+```
+
+```java
+public class LookupDemo {
+    public static void main(String[] args) {
+
+        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
+        context.register(LookupTestBean.class);
+        context.register(LookupDemo.class);
+        context.register(HelloWorldService.class);
+        context.refresh();
+
+        LookupDemo bean = context.getBean(LookupDemo.class);
+
+        LookupTestBean lookupTestBean123 = bean.lookupTestBean("123");
+        LookupTestBean lookupTestBeanabc = bean.lookupTestBean("abc");
+        System.out.println(lookupTestBean123);
+        System.out.println(lookupTestBeanabc);
+
+        lookupTestBean123.print();
+        lookupTestBeanabc.print();
+
+        context.close();
+    }
+
+    @Lookup
+    protected LookupTestBean lookupTestBean(String msg) {
+        // 这里返回啥都无所谓，其实已经被取代了。所以这个方法的参数需要和LookupTestBean的构造函数一致
+        System.out.println("aha");
+        return null;
+    }
+}
+```
+
+我们有时候会遇到某个Spring中的单例Bean用到原型Bean，例如上面的lookupTestBean方法每次调用都需要一个新的LookupTestBean。我们可以使用BeanFactory的getBean()方法来达到每次获取不一样的原型Bean。 也可以通过@Lookup来获取，@Lookup底层也是使用的getBean()。为什么不直接new一个TestBean，因为我需要IOC容器为TestBean注入其他的单例Bean。
+
+@Lookup的原理
+
+@Lookup的原理就是动态代理。
+
+```java
+// AutowiredAnnotationBeanPostProcessor.java
+public Constructor<?>[] determineCandidateConstructors(Class<?> beanClass, final String beanName)
+    throws BeanCreationException {
+
+    // Let's check for lookup methods here...
+    if (!this.lookupMethodsChecked.contains(beanName)) {
+        if (AnnotationUtils.isCandidateClass(beanClass, Lookup.class)) {
+            try {
+                Class<?> targetClass = beanClass;
+                do {
+                    ReflectionUtils.doWithLocalMethods(targetClass, method -> {
+                        Lookup lookup = method.getAnnotation(Lookup.class);
+                        if (lookup != null) {
+                            Assert.state(this.beanFactory != null, "No BeanFactory available");
+                            LookupOverride override = new LookupOverride(method, lookup.value());
+                            try {
+                                RootBeanDefinition mbd = (RootBeanDefinition)
+                                    this.beanFactory.getMergedBeanDefinition(beanName);
+                                // 将方法封装为LookupOverride类的对象，再设置到BeanDefinition中
+                                mbd.getMethodOverrides().addOverride(override);
+                            }
+							// 抛出异常...
+                        }
+                    });
+                    targetClass = targetClass.getSuperclass();
+                }
+                while (targetClass != null && targetClass != Object.class);
+
+            }
+            // 抛出异常...
+        }
+        this.lookupMethodsChecked.add(beanName);
+    }
+}
+```
+
+```java
+public Object instantiate(RootBeanDefinition bd, @Nullable String beanName, BeanFactory owner) {
+    // Don't override the class with CGLIB if no overrides.
+    // 在实例化的时候，有MethodOverrides，所以就使用CGLIB代理
+    if (!bd.hasMethodOverrides()) {
+		// ...
+    }
+    else {
+        // Must generate CGLIB subclass.
+        return instantiateWithMethodInjection(bd, beanName, owner);
+    }
+}
+```
+
+CGLIB真正用于拦截方法执行的是一个内部类。
+
+```java
+private static class LookupOverrideMethodInterceptor extends CglibIdentitySupport 
+    		implements MethodInterceptor {
+
+    private final BeanFactory owner;
+
+    public LookupOverrideMethodInterceptor(RootBeanDefinition beanDefinition, BeanFactory owner) {
+        super(beanDefinition);
+        this.owner = owner;
+    }
+
+    @Override
+    public Object intercept(Object obj, Method method, Object[] args, MethodProxy mp) throws Throwable {
+        // Cast is safe, as CallbackFilter filters are used selectively.
+        LookupOverride lo = 
+            (LookupOverride) getBeanDefinition().getMethodOverrides().getOverride(method);
+        Assert.state(lo != null, "LookupOverride not found");
+        Object[] argsToUse = (args.length > 0 ? args : null);  // if no-arg, don't insist on args at all
+        if (StringUtils.hasText(lo.getBeanName())) {
+            return (argsToUse != null ? this.owner.getBean(lo.getBeanName(), argsToUse) :
+                    this.owner.getBean(lo.getBeanName()));
+        }
+        else {
+            // 调用getBean方法获取真正的实例。
+            // owner是BeanFactory实例。
+            return (argsToUse != null ? this.owner.getBean(method.getReturnType(), argsToUse) :
+                    this.owner.getBean(method.getReturnType()));
+        }
+    }
+}
+```
+
 postProcessBeanDefinition
 
 ```java
@@ -931,7 +1082,7 @@ public ApplicationContextAwareProcessor(ConfigurableApplicationContext applicati
 }
 ```
 
-EmbeddedValueResolver会调用BeanFactory#resolveEmbeddedValue。StringValueResolver是一个函数式接口，只有resolveStringValue一个方法。
+EmbeddedValueResolver会调用BeanFactory#resolveEmbeddedValue。StringValueResolver是一个函数式接口，只有resolveStringValue这一个方法。
 
 ```java
 public class EmbeddedValueResolver implements StringValueResolver {
@@ -1000,60 +1151,9 @@ public Object evaluate(@Nullable String value, BeanExpressionContext evalContext
 
 
 
-## 依赖来源
-
-###  Dependency Lookup
 
 
 
-
-
-
-
-
-
-### AbstractApplicationContext 内建可查找的依赖
-
-| Bean 名称                   | Bean 实例                         | 使用场景                |
-| --------------------------- | --------------------------------- | ----------------------- |
-| environment                 | Environment 对象                  | 外部化配置以及 Profiles |
-| systemProperties            | java.util.Properties 对象         | Java 系统属性           |
-| systemEnvironment           | java.util.Map 对象                | 操作系统环境变量        |
-| messageSource               | MessageSource 对象                | 国际化文案              |
-| lifecycleProcessor          | LifecycleProcessor 对象           | Lifecycle Bean 处理器   |
-| applicationEventMulticaster | ApplicationEventMulticaster 对 象 | Spring 事件广播器       |
-
-
-
-
-
-
-
-### 注解驱动 Spring 应用上下文内建可查找的依赖（部分）
-
-| Bean 名称                                                    | Bean 实例                                 | 使用场景                                              |
-| ------------------------------------------------------------ | ----------------------------------------- | ----------------------------------------------------- |
-| org.springframework.context.annotation.internalConfigurationAnnotationProcessor | ConfigurationClassPostProcessor 对象      | 处理 Spring 配置类                                    |
-| org.springframework.context.annotation.internalAutowiredAnnotationProcessor | AutowiredAnnotationBeanPostProcessor 对象 | 处理 @Autowired 以及 @Value 注解                      |
-| org.springframework.context.annotation.internalCommonAnnotationProcessor | CommonAnnotationBeanPostProcessor 对象    | （条件激活）处理 JSR-250 注解，如 @PostConstruct 等   |
-| org.springframework.context.event.internalEventListenerProcessor | EventListenerMethodProcessor 对象         | 处理标注 @EventListener 的Spring 事件监听方法         |
-| org.springframework.context.event.internalEventListenerFactory | DefaultEventListenerFactory 对 象         | @EventListener 事件监听方法适配为 ApplicationListener |
-
-1. ConfigurationClassPostProcessor—->BeanFactoryPostProcessor Spring容器的生命周期处理,BeanFactory后置处理器
-2. AutowiredAnnotationBeanPostProcessor—->BeanPostProcessor Bean的生命周期处理,Bean的后置处理器
-3. CommonAnnotationBeanPostProcessor—->BeanPostProcessor Bean的生命周期处理,Bean的后置处理器
-4. EventListenerMethodProcessor—->BeanFactoryPostProcessor pring容器的生命周期处理,BeanFactory后置处理器
-5. DefaultEventListenerFactory—->EventListenerFactory
-
-
-
-Spring的ApplicationAware和实例化，初始化的时间。
-
-
-
-FactoryBean的解析	
-
-ObjectFactory的解析
 
 
 
