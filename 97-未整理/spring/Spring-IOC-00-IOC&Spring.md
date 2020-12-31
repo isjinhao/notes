@@ -319,17 +319,37 @@ final class LogAdapter {
 
 #### SpelExpressionParser
 
-这个包主要就是一些API的使用，这里对这位博主的文章进行了一下整理：[链接]([(4条消息) 使用Spring Expression Language (SpEL)解析表达式_neweastsun的专栏-CSDN博客](https://blog.csdn.net/neweastsun/article/details/104533662))。直接看代码就可以明白API的使用。
+这个包主要就是一些API的使用，这里对这位[博主的文章](https://blog.csdn.net/neweastsun/article/details/104533662)进行了一下补充。直接看代码就可以明白API的使用。
 
 ```java
-public class ExpressionTest {
+public class User {
+
+    private String firstName;
+    private String secondName;
+    private String email;
+    private Boolean isAdmin;
+    private Integer age;
+
+    public User(String firstName, String secondName, Boolean isAdmin, String email, Integer age) {
+        this.firstName = firstName;
+        this.secondName = secondName;
+        this.isAdmin = isAdmin;
+        this.email = email;
+        this.age = age;
+    }
+	// getter and setter ...
+}
+```
+
+```java
+public class SimpleSpELExpressionTest {
     private static ExpressionParser parser = new SpelExpressionParser();
+
     public static void main(String[] args) {
         evaluateLiteralExpression();
         methodInvocationOnLiterals();
         accessingObjectProperties();
         operators();
-        variables();
     }
     private static void evaluateLiteralExpression() {
         Expression exp = parser.parseExpression("'Hello World'");
@@ -370,7 +390,24 @@ public class ExpressionTest {
         exp = parser.parseExpression("age < 18 and getAdmin()");
         System.out.println((exp.getValue(user, Boolean.class)));
     }
-    private static void variables() {
+}
+```
+
+#### StandardBeanExpressionResolver
+
+当evaluate an expression以获取properties、methods、fields以及帮助执行类型转换时，使用该接口。现成的实现类是 StandardEvaluationContext，利用了反射来操作对象、缓存 java.lang.reflect.Method、java.lang.reflect.Field和java.lang.reflect.Constructor的实例以增进性能。
+
+你可以：
+
+- 指定目标对象（root object）：使用无参构造，再调用setRootObject()；或者，使用有参构造。
+- 也可以指定Expression中使用的变量和方法：setVariable()、registerFunction()。
+- 还可以register custom `ConstructorResolver`s, `MethodResolver`s, and `PropertyAccessor`s to extend how SpEL evaluates expressions。
+
+```java
+public class RootObjectDemo {
+    public static void main(String[] args) {
+        ExpressionParser parser = new SpelExpressionParser();
+
         User user = new User("John", "Doe", true, "john.doe@acme.com", 30);
         Map<String, Boolean> map = new HashMap<>();
         map.put("ahaha", true);
@@ -382,23 +419,100 @@ public class ExpressionTest {
         // 解析context里的数据
         System.out.println(exp.getValue(context, Boolean.class));
     }
-    private static class User {
-        private String firstName;
-        private String secondName;
-        private String email;
-        private Boolean isAdmin;
-        private Integer age;
-        public User(String firstName, String secondName, Boolean isAdmin, String email, Integer age) {
-            this.firstName = firstName;
-            this.secondName = secondName;
-            this.isAdmin = isAdmin;
-            this.email = email;
-            this.age = age;
-        }
-		// gettet and setter
-    }
 }
 ```
 
-#### StandardBeanExpressionResolver
+PropertyAccessor
+
+```java
+public class StandardEvaluationContextDemo {
+    public static void main(String[] args) {
+        buildInPropertyAccessor();
+        System.out.println("-------------------");
+        customizedPropertyAccessor();
+    }
+
+    private static void customizedPropertyAccessor() {
+
+        User user = new User("John", "Doe", true, "john.doe1@acme.com", 31);
+        StandardEvaluationContext context = new StandardEvaluationContext(user);
+        context.addPropertyAccessor(new MergeAccessor());
+        ExpressionParser parser = new SpelExpressionParser();
+
+        Expression expression = parser.parseExpression("_merge");
+        String _merge = expression.getValue(context, String.class);
+        System.out.println(_merge);
+
+        expression = parser.parseExpression("email");
+        String email = expression.getValue(context, String.class);
+        System.out.println(email);
+
+        expression = parser.parseExpression("error");
+        String error = expression.getValue(context, String.class);
+        System.out.println(error);
+    }
+
+    private static void buildInPropertyAccessor() {
+        User user1 = new User("John1", "Doe1", true, "john1.doe1@acme.com", 31);
+        User user2 = new User("John2", "Doe2", true, "john2.doe2@acme.com", 32);
+
+        Map<String, User> map = new HashMap<>();
+        map.put("user1", user1);
+        map.put("user2", user2);
+
+        StandardEvaluationContext context = new StandardEvaluationContext(map);
+        context.addPropertyAccessor(new MapAccessor());
+
+        ExpressionParser parser = new SpelExpressionParser();
+
+        Expression expression = parser.parseExpression("user1.email");
+
+        String email = expression.getValue(context, String.class);
+        System.out.println(email);
+    }
+
+    static class MergeAccessor implements PropertyAccessor {
+        @Override
+        public Class<?>[] getSpecificTargetClasses() {
+            return new Class[]{User.class};
+        }
+        @Override
+        public boolean canRead(EvaluationContext context, Object target, String name) throws AccessException {
+            return (target instanceof User);
+        }
+        @Override
+        public TypedValue read(EvaluationContext context, Object target, String name) throws AccessException {
+            if ("_merge".equals(name)) {
+                User user = (User) target;
+                String merge = user.getFirstName() + ":" + user.getSecondName() + ":" + user.getEmail();
+                return new TypedValue(merge);
+            }
+            Class<User> userClass = User.class;
+            Field field;
+            try {
+                field = userClass.getDeclaredField(name);
+            } catch (NoSuchFieldException e) {
+                throw new RuntimeException("no field : " + name);
+            }
+            field.setAccessible(true);
+            Object result;
+            try {
+                result = field.get(target);
+            } catch (IllegalAccessException e) {
+                throw new RuntimeException("cannot access field : " + name);
+            }
+            return new TypedValue(result);
+        }
+
+        @Override
+        public boolean canWrite(EvaluationContext context, Object target, String name) throws AccessException {
+            return false;
+        }
+        @Override
+        public void write(EvaluationContext context, Object target, String name, Object newValue) throws AccessException {
+
+        }
+    }
+}
+```
 
