@@ -257,8 +257,7 @@ protected void initMessageSource() {
             hms.setParentMessageSource(getInternalParentMessageSource());
          }
       }
-   }
-   else {
+   } else {
       // Use empty MessageSource to be able to accept getMessage calls.
       DelegatingMessageSource dms = new DelegatingMessageSource();
       dms.setParentMessageSource(getInternalParentMessageSource());
