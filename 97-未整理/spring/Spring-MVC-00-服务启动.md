@@ -1,8 +1,8 @@
-## PropertyEditor
+## 服务配置
 
+Spring MVC采用的仍然是打成war包，放在Servlet容器中的服务启动方式，所以并没有内嵌容器。本机安装的是Apache Tomcat 9。
 
-
-
+由于目前的开发都是前后端式分离，所以后面只会分析Json形式的数据交互，所以为了
 
 
 
